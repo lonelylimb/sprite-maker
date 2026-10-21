@@ -18,8 +18,8 @@ def _slug(path):
     return re.sub(r"[^a-z0-9]+", "_", Path(path).stem.lower()).strip("_") or "sprite"
 
 
-def from_image(rgba, bg_tol, max_colours, nx=None, ny=None):
-    """Sprite from an upscaled image. Returns (rgba uint8, report dict)."""
+def from_image(rgba, bg_tol, max_colours, nx=None, ny=None, clear_holes=False):
+    """Sprite from an upscaled image. Returns (rgba uint8, report dict, grid, cell colours, kept cells)."""
     rgb = rgba[..., :3]
     bg = gridmod.background_colour(rgb)
     box = gridmod.bbox(gridmod.foreground_mask(rgba, bg, bg_tol))
@@ -27,15 +27,20 @@ def from_image(rgba, bg_tol, max_colours, nx=None, ny=None):
     cols, alpha = gridmod.sample_cells(rgba, g)
     bg_like = (alpha < 128) | (np.abs(cols - bg).sum(2) <= bg_tol)
     outside = export.outside_background(bg_like)
-    keep = ~outside
+    keep = ~bg_like if clear_holes else ~outside
     C, lab = palette.cluster_colours(cols[keep], max_colours)
     out = np.zeros(cols.shape[:2] + (4,), np.uint8)
     out[keep, :3] = C[lab].round()
     out[keep, 3] = 255
     notes = []
-    enclosed = int((bg_like & keep).sum())
-    if enclosed:
-        notes.append(f"{enclosed} pixels are close to the background colour but enclosed by the art, so they were kept")
+    enclosed = bg_like & ~outside
+    if clear_holes and enclosed.any():
+        notes.append(f"made {int(enclosed.sum())} enclosed background-coloured pixels transparent (--clear-holes)")
+    elif enclosed.any():
+        ys, xs = np.where(enclosed)
+        notes.append(f"{int(enclosed.sum())} pixels are close to the background colour but enclosed by the art, so they "
+                     f"were kept (around x {xs.min()}-{xs.max()}, y {ys.min()}-{ys.max()} before trimming); "
+                     "use --clear-holes if they are background showing through")
     report = {"mode": "image", "grid": vars(g), "background": [int(v) for v in bg], "notes": notes}
     return out, report, g, cols, keep
 
@@ -82,6 +87,10 @@ def main(argv=None):
     ap.add_argument("--width", type=int, default=1000, help="target width of the upscaled PNG")
     ap.add_argument("--bg-tol", type=int, default=40, help="max sum |dRGB| from the background colour to count as background")
     ap.add_argument("--max-colours", type=int, default=64)
+    ap.add_argument("--keep-all", action="store_true", help="keep separate parts instead of only the largest shape")
+    ap.add_argument("--keep-fringe", action="store_true", help="keep edge-only blend colours (image mode)")
+    ap.add_argument("--clear-holes", action="store_true",
+                    help="make enclosed background-coloured areas transparent too (image mode)")
     a = ap.parse_args(argv)
 
     name = a.name or _slug(a.input)
@@ -102,12 +111,20 @@ def main(argv=None):
             fallback = f"read as a plain image because chart reading failed: {e}"
             mode = "image"
     if mode == "image":
-        out, report, *_ = from_image(rgba, a.bg_tol, a.max_colours)
+        out, report, *_ = from_image(rgba, a.bg_tol, a.max_colours, clear_holes=a.clear_holes)
         if fallback:
             report["notes"].insert(0, fallback)
         if a.colour_source:
             report["notes"].append("--colour-source is only used in chart mode; ignored")
 
+    if not a.keep_all:
+        for size, (x, y) in export.keep_largest(out):
+            report["notes"].append(f"dropped a separate {size}-pixel part around x {x}, y {y} (before trimming); "
+                                   "use --keep-all to keep separate parts")
+    if mode == "image" and not a.keep_fringe:
+        for colour, n in export.remove_fringe(out):
+            report["notes"].append(f"removed {n} edge pixels of fringe colour {colour} (only used around the outside); "
+                                   "use --keep-fringe to keep them")
     bg = report.get("background")
     cleared = export.remove_strays(out, np.array(bg) if bg else None, a.bg_tol * 1.5)
     if cleared:

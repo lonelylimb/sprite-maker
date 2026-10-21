@@ -14,3 +14,5 @@ Start with `python -m sprite_tools INPUT`, then check its preview and notes befo
 If I send two images of the same art (e.g. a bead chart and a clean picture), use the chart for the pixel grid and the clean picture for the colours: `python -m sprite_tools CHART --colour-source PICTURE`. When there's only a chart, use the chart's cell colours. When there's only a picture, cluster its colours.
 
 A bead chart's stated size (e.g. 70x62) includes its empty border. Report the trimmed size of the art itself.
+
+By default the tool keeps only the largest connected shape, so ground patches, signatures, sparkles and motion lines are dropped. In plain images it also removes "fringe" colours that appear only around the outside, which artists add to blend the edge into the old background. Check the dropped parts it lists. Use `--keep-all` if a real part of the object is drawn separately. Use `--clear-holes` when background-coloured areas enclosed by the art are background showing through (e.g. inside a loop), not part of the art.

@@ -1,0 +1,48 @@
+{
+  "mode": "image",
+  "grid": {
+    "x0": 71.62065217391292,
+    "px": 5.358695652173897,
+    "nx": 115,
+    "y0": 149.52163157894714,
+    "py": 5.356736842105243,
+    "ny": 95
+  },
+  "background": [
+    213,
+    209,
+    198
+  ],
+  "notes": [
+    "made 17 enclosed background-coloured pixels transparent (--clear-holes)",
+    "dropped a separate 721-pixel part around x 57, y 86 (before trimming); use --keep-all to keep separate parts",
+    "dropped a separate 12-pixel part around x 3, y 17 (before trimming); use --keep-all to keep separate parts",
+    "dropped a separate 11-pixel part around x 19, y 91 (before trimming); use --keep-all to keep separate parts",
+    "dropped a separate 4-pixel part around x 0, y 12 (before trimming); use --keep-all to keep separate parts",
+    "dropped a separate 3-pixel part around x 80, y 8 (before trimming); use --keep-all to keep separate parts",
+    "dropped a separate 3-pixel part around x 75, y 11 (before trimming); use --keep-all to keep separate parts",
+    "dropped a separate 2-pixel part around x 22, y 93 (before trimming); use --keep-all to keep separate parts",
+    "dropped a separate 1-pixel part around x 112, y 86 (before trimming); use --keep-all to keep separate parts",
+    "dropped a separate 1-pixel part around x 83, y 11 (before trimming); use --keep-all to keep separate parts",
+    "dropped a separate 1-pixel part around x 75, y 92 (before trimming); use --keep-all to keep separate parts",
+    "dropped a separate 1-pixel part around x 2, y 86 (before trimming); use --keep-all to keep separate parts",
+    "dropped a separate 1-pixel part around x 2, y 8 (before trimming); use --keep-all to keep separate parts",
+    "removed 6 edge pixels of fringe colour (128, 128, 84) (only used around the outside); use --keep-fringe to keep them",
+    "removed 9 edge pixels of fringe colour (135, 141, 81) (only used around the outside); use --keep-fringe to keep them",
+    "removed 53 edge pixels of fringe colour (137, 136, 98) (only used around the outside); use --keep-fringe to keep them",
+    "removed 7 edge pixels of fringe colour (178, 174, 126) (only used around the outside); use --keep-fringe to keep them",
+    "removed 7 edge pixels of fringe colour (226, 221, 217) (only used around the outside); use --keep-fringe to keep them",
+    "removed 2 stray edge pixels"
+  ],
+  "pixel_size": [
+    107,
+    78
+  ],
+  "colours": 27,
+  "files": {
+    "sprite": "sprites/dragonite/dragonite_107x78.png",
+    "upscaled": "sprites/dragonite/dragonite_963w.png",
+    "preview": "sprites/dragonite/preview_dark.png",
+    "scale": 9
+  }
+}

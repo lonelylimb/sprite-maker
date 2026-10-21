@@ -95,3 +95,27 @@ def group_medians(labels, samples, n):
         if (labels == k).any():
             out[k] = np.median(samples[labels == k], 0)
     return out
+
+
+def relabel_two_views(labels, A, B, iters=8):
+    """Refine labels using two views of the same cells (e.g. chart colours and a clean picture).
+
+    Each round, every cell goes to the label whose centre is nearest in both views
+    together, each view's distance scaled by its typical spread, so a cell spoiled
+    in one view (a watermark line, a misprinted chart colour) is held by the other.
+    """
+    lab = labels.copy()
+    for _ in range(iters):
+        ks = np.unique(lab)
+        CA = np.array([np.median(A[lab == k], 0) for k in ks])
+        CB = np.array([np.median(B[lab == k], 0) for k in ks])
+        dA = np.linalg.norm(A[:, None] - CA[None], axis=2)
+        dB = np.linalg.norm(B[:, None] - CB[None], axis=2)
+        own = np.searchsorted(ks, lab)
+        sA = np.median(dA[np.arange(len(lab)), own]) + 1
+        sB = np.median(dB[np.arange(len(lab)), own]) + 1
+        new = ks[(dA / sA + dB / sB).argmin(1)]
+        if (new == lab).all():
+            break
+        lab = new
+    return lab

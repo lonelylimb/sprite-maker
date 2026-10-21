@@ -45,34 +45,128 @@ def from_image(rgba, bg_tol, max_colours, nx=None, ny=None, clear_holes=False):
     return out, report, g, cols, keep
 
 
-def from_chart(rgba, colour_source, bg_tol):
-    ch = beadchart.read_chart(rgba)
-    lab = ch.labels
-    ys, xs = np.where(lab >= 0)
-    lab = lab[ys.min():ys.max() + 1, xs.min():xs.max() + 1]
-    filled = lab >= 0
+def _count_error(labels, counts):
+    """Distance between assigned cells per legend entry and the legend counts it could read, or None."""
+    known = [k for k, c in enumerate(counts) if c is not None]
+    if len(known) < len(counts) / 2:
+        return None
+    used = np.bincount(labels, minlength=len(counts))
+    return int(sum(abs(used[k] - counts[k]) for k in known))
+
+
+def _label_from_source(ch, art, labels, cols, tol=30):
+    """Use the clean picture to correct chart labels. Returns (art, labels, notes).
+
+    A new labelling is kept only if it matches the legend counts better than the
+    chart's own (when enough counts were read to tell).
+    """
+    chart_lab = labels[art]
+    X = cols[art]
+    near = palette.nearest(X, ch.swatches)
+    dist = np.linalg.norm(X - ch.swatches[near], axis=1)
+    med = palette.group_medians(chart_lab, X, len(ch.swatches))
+    sizes = np.bincount(chart_lab, minlength=len(ch.swatches))
+    off = np.abs(med - ch.swatches).sum(1)
+    typical = np.nanmedian(np.where(sizes >= 3, off, np.nan))
+    clear = np.zeros(len(chart_lab), bool)
+    if typical < 40:
+        # the picture shows the bead colours themselves: read each cell from it, except
+        # where an overlay spoils the picture (nothing within tol) and the chart decides
+        new = np.where(dist <= tol, near, chart_lab)
+        # an entry that looks nothing like its swatch in the picture is a clear bead
+        # with the background showing through: leave those cells transparent
+        see = [k for k in range(len(off)) if sizes[k] >= 3 and off[k] > 150]
+        clear = np.isin(chart_lab, see) & (dist > tol)
+        how = (f"labelled {int((dist <= tol).sum())} cells from the colour source's bead colours "
+               f"and {int((dist > tol).sum())} from the chart where the source is covered")
+    else:
+        new = palette.relabel_two_views(chart_lab, ch.fills[art], X)
+        how = f"{int((new != chart_lab).sum())} cells relabelled using chart and colour source together"
+    old_err = _count_error(chart_lab[~clear], ch.counts)
+    new_err = _count_error(new[~clear], ch.counts)
+    keep = new_err < old_err if old_err is not None else typical < 40
+    notes = []
+    if not keep:
+        notes.append("kept the chart's labels: the colour source did not bring them closer to the legend counts")
+        return art, labels, notes
+    notes.append(how + (f" (legend count mismatch {old_err} -> {new_err})" if old_err is not None else ""))
+    if clear.any():
+        names = ", ".join(str(tuple(int(v) for v in ch.swatches[k])) for k in see)
+        notes.append(f"{int(clear.sum())} cells of legend colour {names} show the background in the colour "
+                     "source (clear beads), so they were left transparent")
+    labels[art] = new
+    idx = np.argwhere(art)[clear]
+    art = art.copy()
+    art[idx[:, 0], idx[:, 1]] = False
+    labels[~art] = -1
+    ch.labels = labels.copy()
+    notes += [n for n in beadchart.count_notes(ch) if "legend says" in n or "total" in n]
+    return art, labels, notes
+
+
+def from_chart(rgba, colour_source, cells=None):
+    ch = beadchart.read_chart(rgba, cells)
+    art = ch.labels >= 0
+    labels = ch.labels.copy()
     colours = ch.colours.copy()
     notes = list(ch.notes)
-    if ch.relabelled:
-        cells = ", ".join(f"r{r - ys.min() + 1}c{c - xs.min() + 1}" for r, c, _, _ in ch.relabelled)
-        notes.append(f"{len(ch.relabelled)} cells relabelled by printed-code shape (watermarks or misread colours): {cells}")
+    cols = None
     if colour_source is not None:
         src = gridmod.load_rgba(colour_source)
-        _, rep, g, cols, keep = from_image(src, bg_tol, 64, lab.shape[1], lab.shape[0])
-        agree = (keep == filled).mean()
-        notes.append(f"colour source aligned on a {g.nx}x{g.ny} grid, {g.px:.3f}x{g.py:.3f}px per pixel; "
-                     f"outline agrees with the chart on {agree:.1%} of cells")
-        if agree < 0.9:
+        g, score = gridmod.align_to_cells(src, ch.fills, art)
+        cols, _ = gridmod.sample_cells(src, g, core=0.35)
+        notes.append(f"colour source aligned at {g.px:.3f}x{g.py:.3f}px per pixel; "
+                     f"colour correlation with the chart {score:.2f}")
+        if score < 0.5:
             notes.append("WARNING: colour source does not line up with the chart; chart colours were used instead")
-        else:
-            med = palette.group_medians(lab[filled], cols[filled], len(colours))
-            ok = ~np.isnan(med).any(1)
-            colours[ok] = med[ok]
+            cols = None
+    if ch.faded:
+        # white beads get pale printed codes, so they look washed out like the non-art cells
+        near = art.copy()
+        added = 0
+        while cols is not None:
+            p = np.pad(art, 1)
+            touch = (p[:-2, 1:-1] | p[2:, 1:-1] | p[1:-1, :-2] | p[1:-1, 2:]) & ~art
+            # a light cell next to the art that the picture shows in a bead colour
+            bead = np.linalg.norm(cols - ch.swatches[palette.nearest(cols.reshape(-1, 3), ch.swatches)]
+                                  .reshape(cols.shape), axis=2) <= 30
+            add = touch & (cols.mean(2) > 150) & bead
+            if not add.any():
+                break
+            art |= add
+            art = ~export.outside_background(~art)
+            added += int(add.sum())
+        labels[art & (labels < 0)] = ch.all_labels[art & (labels < 0)]
+        if added:
+            notes.append(f"added {added} light cells next to the art that show a bead colour in the colour source "
+                         f"(light beads printed with pale codes); art is now {int(art.sum())} cells")
+        elif cols is None:
+            p = np.pad(near, 1)
+            n = int(((p[:-2, 1:-1] | p[2:, 1:-1] | p[1:-1, :-2] | p[1:-1, 2:]) & ch.light).sum())
+            if n:
+                notes.append(f"{n} near-white cells touch the art but have pale codes; they may be white beads "
+                             "(pass --colour-source to decide)")
+    if cols is not None:
+        art, labels, more = _label_from_source(ch, art, labels, cols)
+        if not more[0].startswith("kept"):
+            notes = [n for n in notes if "legend says" not in n and "legend total" not in n]
+        notes += more
+    ys, xs = np.where(art)
+    y0, x0 = ys.min(), xs.min()
+    crop = (slice(y0, ys.max() + 1), slice(x0, xs.max() + 1))
+    lab, art = labels[crop], art[crop]
+    if ch.relabelled:
+        where = ", ".join(f"r{r - y0 + 1}c{c - x0 + 1}" for r, c, _, _ in ch.relabelled)
+        notes.append(f"{len(ch.relabelled)} cells relabelled by printed-code shape (watermarks or misread colours): {where}")
+    if cols is not None:
+        med = palette.group_medians(lab[art], cols[crop][art], len(colours))
+        ok = ~np.isnan(med).any(1)
+        colours[ok] = med[ok]
     out = np.zeros(lab.shape + (4,), np.uint8)
-    out[filled, :3] = colours[lab[filled]].round()
-    out[filled, 3] = 255
-    report = {"mode": "chart", "chart_grid": vars(ch.grid), "legend_entries": len(ch.swatches),
-              "legend_counts": ch.counts, "notes": notes}
+    out[art, :3] = colours[lab[art]].round()
+    out[art, 3] = 255
+    report = {"mode": "chart", "chart_grid": vars(ch.grid), "faded_chart": bool(ch.faded),
+              "legend_entries": len(ch.swatches), "legend_counts": ch.counts, "notes": notes}
     return out, report
 
 
@@ -82,6 +176,7 @@ def main(argv=None):
     ap.add_argument("input")
     ap.add_argument("--colour-source", "--color-source", help="clean image of the same art to take colours from (chart mode)")
     ap.add_argument("--mode", choices=["auto", "chart", "image"], default="auto")
+    ap.add_argument("--cells", help="chart grid size as WxH when the chart states it, e.g. 52x52")
     ap.add_argument("--name", help="output name (default: from the input file name)")
     ap.add_argument("--out", help="output folder (default: sprites/<name>)")
     ap.add_argument("--width", type=int, default=1000, help="target width of the upscaled PNG")
@@ -104,7 +199,8 @@ def main(argv=None):
     fallback = None
     if mode == "chart":
         try:
-            out, report = from_chart(rgba, a.colour_source, a.bg_tol)
+            cells = tuple(int(v) for v in a.cells.lower().split("x")) if a.cells else None
+            out, report = from_chart(rgba, a.colour_source, cells)
         except beadchart.ChartError as e:
             if a.mode == "chart":
                 raise SystemExit(f"could not read chart: {e}")

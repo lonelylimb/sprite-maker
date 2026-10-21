@@ -85,8 +85,9 @@ def estimate_pitch(profile, start, end, min_pitch=2.0):
     seg = profile[start:end] - profile[start:end].mean()
     f = np.abs(np.fft.rfft(seg))
     freqs = np.fft.rfftfreq(len(seg))
-    ok = freqs > 0
-    ok &= 1 / np.where(freqs > 0, freqs, 1) >= min_pitch
+    period = 1 / np.where(freqs > 0, freqs, 1)
+    # long periods are the outline of the art, not its pixel grid
+    ok = (freqs > 0) & (period >= min_pitch) & (period < (end - start) / 4)
     peak = 1 / freqs[ok][f[ok].argmax()]
     cands = sorted({round(peak * k / d, 3) for k in (1, 2, 3, 4) for d in (1, 2, 3, 4)
                     if peak * k / d >= min_pitch and peak * k / d < (end - start) / 4})
@@ -111,6 +112,43 @@ def fit_grid(rgb, box, nx=None, ny=None):
         out.append((o, p, n))
     (ox, px, nx), (oy, py, ny) = out
     return Grid(ox, px, nx, oy, py, ny)
+
+
+def align_to_cells(rgba, ref, mask, min_pitch=3):
+    """Find where a reference cell grid (e.g. a chart) sits in an upscaled image.
+
+    Works on any background: the pixel pitch comes from the image's edge
+    periodicity and the position from the best colour correlation between the
+    image's cells and ref on the cells in mask. Returns (grid, correlation).
+    """
+    rgb = rgba[..., :3]
+    h, w = rgb.shape[:2]
+    gx, gy = edge_profiles(rgb, (0, 0, w, h))
+    axes = []
+    for prof, n_px in ((gx, w - 1), (gy, h - 1)):
+        # measure the pitch where the sharp edges are, not across flat or blurred background
+        base = np.median(prof)
+        busy = np.where(prof > base + 0.2 * (prof.max() - base))[0]
+        a, b = busy.min(), busy.max() + 1
+        p = estimate_pitch(prof, a, b, min_pitch)
+        n = max(1, int((b - a) / p))
+        o, p = refine_axis(prof, a, n, p)
+        axes.append((o % p, p, int((n_px - o % p) / p)))
+    (ox, px, nx), (oy, py, ny) = axes
+    cols, _ = sample_cells(rgba, Grid(ox, px, nx, oy, py, ny), core=0.35)
+    ry, rx = np.where(mask)
+    ref_v = ref[ry, rx]
+    ref_v = (ref_v - ref_v.mean(0)) / (ref_v.std(0) + 1e-6)
+    best = (-np.inf, 0, 0)
+    for dy in range(-ry.min(), ny - ry.max()):
+        for dx in range(-rx.min(), nx - rx.max()):
+            v = cols[ry + dy, rx + dx]
+            v = (v - v.mean(0)) / (v.std(0) + 1e-6)
+            score = (v * ref_v).mean()
+            if score > best[0]:
+                best = (score, dx, dy)
+    score, dx, dy = best
+    return Grid(ox + dx * px, px, ref.shape[1], oy + dy * py, py, ref.shape[0]), score
 
 
 def sample_cells(rgba, grid, core=0.4):

@@ -5,8 +5,9 @@ from dataclasses import dataclass, field
 import numpy as np
 
 from . import ocr
+from .export import components, outside_background
 from .grid import Grid, estimate_pitch, refine_axis
-from .palette import match_to_legend
+from .palette import match_to_legend, nearest
 
 
 class ChartError(ValueError):
@@ -22,6 +23,10 @@ class Chart:
     counts: list               # legend bead counts read by OCR (None where unread / OCR missing)
     relabelled: list = field(default_factory=list)  # (row, col, old, new), 0-based in the art grid
     notes: list = field(default_factory=list)
+    fills: np.ndarray = None       # (ny, nx, 3) cell colours as read
+    all_labels: np.ndarray = None  # (ny, nx) nearest legend entry for every cell, art or not
+    faded: bool = False            # chart prints every cell and fades the ones that are not art
+    light: np.ndarray = None       # faded charts: near-white non-art cells that may be white beads
 
 
 def _line_profiles(lum):
@@ -34,8 +39,13 @@ def _line_profiles(lum):
     return v.sum(0).astype(float), h.sum(1).astype(float)
 
 
-def _axis_lines(profile):
-    """(first line position, pitch, cell count) of the longest run of evenly spaced grid lines."""
+def _axis_lines(profile, n=None):
+    """(first line position, pitch, cell count) of the grid along one axis.
+
+    Without n: the longest run of evenly spaced strong lines (a single faint line
+    inside a run does not break it). With n: the window of n cells
+    whose boundary lines are strongest overall.
+    """
     n_px = len(profile)
     p = estimate_pitch(profile + 0.0, 0, n_px, min_pitch=6)
     offs = np.arange(0, p, 0.1)
@@ -46,19 +56,30 @@ def _axis_lines(profile):
     pos = o + p * k
     pos = pos[pos < n_px - 1]
     strength = np.array([profile[max(0, int(x) - 1):int(x) + 2].max() for x in pos])
-    strong = strength > 0.35 * np.median(np.sort(strength)[-max(3, len(strength) // 2):])
-    best, run_start, cur = (0, 0), None, 0
-    for i, s in enumerate(list(strong) + [False]):
-        if s and run_start is None:
-            run_start = i
-        if not s and run_start is not None:
-            if i - run_start > best[1] - best[0]:
-                best = (run_start, i)
-            run_start = None
-    a, b = best
-    n = b - a - 1
-    if n < 4:
-        raise ChartError("no regular grid lines found")
+    if n:
+        if len(pos) < n + 1:
+            raise ChartError(f"found only {len(pos) - 1} cells along an axis, expected {n}")
+        a = int(np.argmax([strength[i:i + n + 1].sum() for i in range(len(pos) - n)]))
+    else:
+        strong = strength > 0.35 * np.median(np.sort(strength)[-max(3, len(strength) // 2):])
+        # bridge a single faint line only deep inside a run, so the grid never
+        # grows into legend boxes that happen to line up with it
+        st = strong.copy()
+        for i in range(3, len(st) - 3):
+            if not st[i] and st[i - 3:i].all() and st[i + 1:i + 4].all():
+                strong[i] = True
+        best, run_start = (0, 0), None
+        for i, s in enumerate(list(strong) + [False]):
+            if s and run_start is None:
+                run_start = i
+            if not s and run_start is not None:
+                if i - run_start > best[1] - best[0]:
+                    best = (run_start, i)
+                run_start = None
+        a, b = best
+        n = b - a - 1
+        if n < 4:
+            raise ChartError("no regular grid lines found")
     o, p = refine_axis(profile, pos[a] + 0.5, n, p, spread=0.01)
     return o, p, n
 
@@ -81,47 +102,117 @@ def _text_width(mask):
 
 
 def _read_cell(rgb, box, inset, size):
-    """Fill colour (robust to light watermark strokes) and a size-cropped text mask for one cell."""
+    """Read one cell.
+
+    Returns the fill colour (robust to light watermark strokes), a size-cropped text
+    mask, how dark the darkest printed pixels are (crisp codes are near black, faded
+    ones grey) and the share of strongly yellow pixels (outlined watermark lettering).
+    """
     l, t, r, b = box
     blk = rgb[t + inset:b - inset, l + inset:r - inset][:size[0], :size[1]]
     strip = np.concatenate([blk[:2].reshape(-1, 3), blk[-2:].reshape(-1, 3)])
     sl = strip.mean(1)
     fill = np.median(strip[sl <= np.median(sl)], 0)
-    return fill, _text_mask(blk, fill)
+    px = blk.reshape(-1, 3)
+    return fill, _text_mask(blk, fill), np.percentile(px.mean(1), 3), _is_watermark_yellow(px).mean()
+
+
+def _valley(values, bin_width=5):
+    """Threshold at the emptiest point between the two main peaks of a histogram."""
+    hist, edges = np.histogram(values, bins=np.arange(0, 256 + bin_width, bin_width))
+    smooth = np.convolve(hist, [1, 2, 1], "same")
+    order = np.argsort(smooth)[::-1]
+    a = order[0]
+    b = next(i for i in order[1:] if abs(i - a) > 3)
+    lo, hi = sorted((a, b))
+    v = lo + int(np.argmin(smooth[lo:hi + 1]))
+    return edges[v] + bin_width / 2
+
+
+def _is_watermark_yellow(px):
+    """Strong yellow of outlined watermark lettering (bead colours are never this saturated)."""
+    return ((px[..., 0] + px[..., 1]) / 2 - px[..., 2] > 90) & (np.abs(px[..., 0] - px[..., 1]) < 45)
+
+
+def _runs(flags):
+    """(start, end) of each run of True values."""
+    out, s = [], None
+    for i, f in enumerate(list(flags) + [False]):
+        if f and s is None:
+            s = i
+        if not f and s is not None:
+            out.append((s, i))
+            s = None
+    return out
+
+
+def _column_fill(band, tol=40):
+    """Dominant colour of each column of band (box fill beats printed text and border lines).
+
+    The pixel with the most similar pixels (within tol, sum of |dRGB|) in its column
+    wins, so compression noise inside the fill does not split it up.
+    """
+    out = np.zeros((band.shape[1], 3))
+    for x in range(band.shape[1]):
+        px = band[:, x]
+        near = np.abs(px[:, None] - px[None]).sum(2) <= tol
+        out[x] = np.median(px[near[near.sum(1).argmax()]], 0)
+    return out
 
 
 def _legend(rgb, y_from, pitch):
-    """Legend swatches below the grid: list of (colour, code text width, count_box)."""
+    """Legend swatches below the grid: list of (colour, code text width, (box, count box)).
+
+    Handles legends with a separate white count box after each swatch and legends
+    with code and count inside one swatch, with or without gaps between swatches.
+    """
     h, w = rgb.shape[:2]
-    nonwhite = rgb.min(2) < 244
-    frac = nonwhite.mean(1)
-    rows = [(y_from <= y) and (0.02 < frac[y] < 0.9) for y in range(h)]
-    bands, start = [], None
-    for y, on in enumerate(rows + [False]):
-        if on and start is None:
-            start = y
-        if not on and start is not None:
-            if y - start >= pitch * 0.6:
-                bands.append((start, y))
-            start = None
+    frac = (rgb.min(2) < 244).mean(1)
+    rows = (np.arange(h) >= y_from) & (frac > 0.02)
+    # legend rows can touch; split where a whole pixel row changes sharply (box edges)
+    edge = np.r_[0, np.abs(np.diff(rgb, axis=0)).sum(2).mean(1)] > 180
+    bands = []
+    for ya, yb in _runs(rows):
+        cuts = [ya] + [y for y in range(ya + 1, yb) if edge[y]] + [yb]
+        bands += list(zip(cuts[:-1], cuts[1:]))
     items = []
     for ya, yb in bands:
-        # rows just inside the box border, above and below the printed code
-        strip = np.concatenate([rgb[ya + 3:ya + 5], rgb[yb - 5:yb - 3]])
-        white = strip.mean(0).min(1) > 244
-        segs, s = [], None
-        for x, wt in enumerate(list(white) + [True]):
-            if not wt and s is None:
-                s = x
-            if wt and s is not None:
-                if x - s >= pitch * 0.8:
-                    segs.append((s, x))
-                s = None
-        for i, (s, e) in enumerate(segs):
-            colour = np.median(strip[:, s + 2:e - 2].reshape(-1, 3), 0)
-            text = _text_mask(rgb[ya + 3:yb - 3, s + 2:e - 2], colour)
-            nxt = segs[i + 1][0] if i + 1 < len(segs) else min(w, e + 2 * (e - s))
-            items.append((colour, _text_width(text), (e, ya, nxt, yb)))
+        if yb - ya < pitch * 0.6 or _is_watermark_yellow(rgb[ya:yb]).mean() > 0.05:
+            continue
+        col = _column_fill(rgb[ya:yb])
+        # a number header is one flat colour across; a legend row changes colour box to box
+        chunks = np.array([np.median(col[x:x + 10], 0) for x in range(0, w - 10, 10)])
+        if np.percentile(chunks.sum(1), 90) - np.percentile(chunks.sum(1), 10) < 30 and frac[ya:yb].mean() > 0.9:
+            continue
+        # boxes are separated by white gaps, checked on the plainest rows (no border, no text) ...
+        inner = np.arange(ya + 1, yb - 1)
+        strip = rgb[np.sort(inner[np.argsort(frac[inner], kind="stable")[:4]])]
+        nonwhite = strip.mean(0).min(1) <= 244
+        boxes = []
+        for s, e in _runs(nonwhite):
+            if e - s < pitch * 0.8:
+                continue
+            # ... or touch: split where two long steady stretches of different colour meet
+            jump = np.r_[np.inf, np.abs(np.diff(col[s:e], axis=0)).sum(1)]
+            cuts = [x for x in range(e - s) if jump[x] > 40] + [e - s]
+            steady = [(s + a, s + b, np.median(col[s + a:s + b], 0)) for a, b in zip(cuts[:-1], cuts[1:])
+                      if b - a >= pitch * 0.8]
+            starts = [s] + [b0 for (_, _, c0), (b0, _, c1) in zip(steady, steady[1:])
+                            if np.abs(c0 - c1).sum() > 40]
+            for a, b in zip(starts, starts[1:] + [e]):
+                c = np.median(col[a + 1:b - 1], 0)
+                if c.min() > 244:
+                    continue
+                if boxes and a - boxes[-1][1] < pitch * 0.6 and np.abs(boxes[-1][2] - c).sum() < 12:
+                    a0 = boxes[-1][0]  # a near-white box broken up by its own text
+                    boxes[-1] = (a0, b, np.median(col[a0 + 1:b - 1], 0))
+                else:
+                    boxes.append((a, b, c))
+        for i, (s, e, c) in enumerate(boxes):
+            colour = c
+            text = _text_mask(rgb[ya + 2:yb - 2, s + 2:e - 2], colour)
+            nxt = boxes[i + 1][0] if i + 1 < len(boxes) else min(w, e + 2 * (e - s))
+            items.append((colour, _text_width(text), ((s, ya, e, yb), (e, ya, nxt, yb))))
     return items
 
 
@@ -151,13 +242,28 @@ def _repair_by_code_shape(labels, fills, masks, k=7, min_votes=4):
     return out, changed
 
 
+def _two_groups(masks):
+    """Split code masks into two groups of similar-looking codes (2-means)."""
+    M = masks.reshape(len(masks), -1)
+    a = np.argmax(((M - M.mean(0)) ** 2).sum(1))
+    b = np.argmax(((M - M[a]) ** 2).sum(1))
+    C = M[[a, b]].astype(float)
+    for _ in range(20):
+        g = ((M[:, None] - C[None]) ** 2).sum(2).argmin(1)
+        if g.all() or not g.any():
+            break
+        C = np.array([M[g == 0].mean(0), M[g == 1].mean(0)])
+    return g == 1
+
+
 def _split_merged(labels, masks, colours, widths, counts):
-    """Split cells shared by two legend colours too close to tell apart, using code length.
+    """Split cells shared by two legend colours too close to tell apart, using the printed codes.
 
     When a legend entry got no cells (or far fewer than the legend says) and its
-    nearest legend colour has roughly both entries' counts, the printed codes in that group are split by text
-    width (e.g. "A6" vs "A10"); the wider group goes to the entry whose legend
-    code is wider. Edits labels in place and returns notes.
+    nearest legend colour has roughly both entries' counts, the codes in that
+    group are split in two: by text width when the legend codes differ in width
+    (e.g. "A6" vs "A10"), otherwise by code shape with the group sizes matched to
+    the legend counts. Edits labels in place and returns notes.
     """
     notes = []
     used = np.bincount(labels, minlength=len(colours))
@@ -167,67 +273,96 @@ def _split_merged(labels, masks, colours, widths, counts):
     for z in starved:
         others = [k for k in range(len(colours)) if k != z and used[k] > 0]
         m = min(others, key=lambda k: np.linalg.norm(colours[k] - colours[z]))
-        if widths[z] == widths[m]:
-            continue
         both = used[m] + used[z]
-        if counts[z] is not None and counts[m] is not None:
-            if abs(both - counts[z] - counts[m]) > max(3, 0.1 * both):
-                continue
-        idx = np.where((labels == m) | (labels == z))[0]
-        cut = (cell_w[idx].min() + cell_w[idx].max()) / 2
-        wide = cell_w[idx] > cut
-        if wide.all() or not wide.any():
+        known = counts[z] is not None and counts[m] is not None
+        if known and abs(both - counts[z] - counts[m]) > max(3, 0.1 * both):
             continue
-        wide_entry, narrow_entry = (z, m) if widths[z] > widths[m] else (m, z)
-        labels[idx[wide]] = wide_entry
-        labels[idx[~wide]] = narrow_entry
-        notes.append(f"legend entries {m + 1} and {z + 1} are almost the same colour; split their "
-                     f"{len(idx)} cells by printed code length ({int((~wide).sum())} narrow, {int(wide.sum())} wide)")
+        idx = np.where((labels == m) | (labels == z))[0]
+        if abs(widths[z] - widths[m]) >= 2:
+            cut = (cell_w[idx].min() + cell_w[idx].max()) / 2
+            grp = cell_w[idx] > cut
+            first, second = (z, m) if widths[z] > widths[m] else (m, z)
+            how = "printed code length"
+        elif known:
+            grp = _two_groups(masks[idx])
+            n1 = int(grp.sum())
+            # give each shape group the entry whose legend count it matches best
+            first, second = (z, m) if abs(n1 - counts[z]) <= abs(n1 - counts[m]) else (m, z)
+            how = "printed code shape, matched to the legend counts"
+        else:
+            continue
+        if grp.all() or not grp.any():
+            continue
+        labels[idx[grp]] = first
+        labels[idx[~grp]] = second
+        notes.append(f"legend entries {m + 1} and {z + 1} are almost the same colour; split their {len(idx)} "
+                     f"cells by {how} ({int((labels[idx] == m).sum())} / {int((labels[idx] == z).sum())})")
         used = np.bincount(labels, minlength=len(colours))
     return notes
 
 
-def read_chart(rgba):
+def read_chart(rgba, cells=None):
+    """Read a chart. cells=(nx, ny) fixes the grid size when the chart states it."""
     rgb = rgba[..., :3]
     vx, hy = _line_profiles(rgb.mean(2))
-    ox, px, nx = _axis_lines(vx)
-    oy, py, ny = _axis_lines(hy)
+    ox, px, nx = _axis_lines(vx, cells and cells[0])
+    oy, py, ny = _axis_lines(hy, cells and cells[1])
     grid = Grid(ox, px, nx, oy, py, ny)
     inset = max(2, int(round(min(px, py) * 0.13)))
 
     size = (int(py) - 2 * inset, int(px) - 2 * inset)
     fills = np.zeros((ny, nx, 3))
     masks = np.zeros((ny, nx) + size)
+    dark = np.zeros((ny, nx))
+    yellow = np.zeros((ny, nx))
     for r in range(ny):
         for c in range(nx):
-            fills[r, c], masks[r, c] = _read_cell(rgb, grid.cell_box(c, r), inset, size)
+            fills[r, c], masks[r, c], dark[r, c], yellow[r, c] = _read_cell(rgb, grid.cell_box(c, r), inset, size)
 
-    # drop number headers: an outer row/column whose cells are all the same non-white grey
-    def uniform(v):
-        return np.abs(v - np.median(v, 0)).sum(1).max() < 25 and v.min() < 235
-    r0, r1, c0, c1 = 0, ny, 0, nx
-    for _ in range(2):
-        if uniform(fills[r0, c0:c1]):
-            r0 += 1
-        if uniform(fills[r1 - 1, c0:c1]):
-            r1 -= 1
-        if uniform(fills[r0:r1, c0]):
-            c0 += 1
-        if uniform(fills[r0:r1, c1 - 1]):
-            c1 -= 1
-    fills, masks = fills[r0:r1, c0:c1], masks[r0:r1, c0:c1]
-    grid = Grid(ox + px * c0, px, c1 - c0, oy + py * r0, py, r1 - r0)
+    if not cells:
+        # drop number headers: an outer row/column whose cells are all the same non-white grey
+        def uniform(v):
+            return np.abs(v - np.median(v, 0)).sum(1).max() < 25 and v.min() < 235
+        r0, r1, c0, c1 = 0, ny, 0, nx
+        for _ in range(2):
+            if uniform(fills[r0, c0:c1]):
+                r0 += 1
+            if uniform(fills[r1 - 1, c0:c1]):
+                r1 -= 1
+            if uniform(fills[r0:r1, c0]):
+                c0 += 1
+            if uniform(fills[r0:r1, c1 - 1]):
+                c1 -= 1
+        fills, masks = fills[r0:r1, c0:c1], masks[r0:r1, c0:c1]
+        dark, yellow = dark[r0:r1, c0:c1], yellow[r0:r1, c0:c1]
+        grid = Grid(ox + px * c0, px, c1 - c0, oy + py * r0, py, r1 - r0)
 
-    perimeter = np.concatenate([fills[0], fills[-1], fills[:, 0], fills[:, -1]])
-    empty_col = np.median(perimeter, 0)
-    empty = np.abs(fills - empty_col).sum(2) < 30
+    notes = []
+    blank = np.abs(fills - 255).sum(2) < 30
+    faded = blank.mean() < 0.05
+    light = None
+    if faded:
+        # every cell is printed; the art has crisp near-black codes, the rest is washed out
+        wm = yellow > 0.1
+        thr = _valley(dark[~wm])
+        art = (dark < thr) & ~wm
+        art = ~outside_background(~art)
+        lab_cc, sizes = components(art)
+        art = lab_cc == int(np.argmax(sizes)) + 1
+        light = (fills.min(2) > 225) & ~art
+        notes.append(f"faded-style chart: {int(art.sum())} cells with crisp codes (darkest print < {thr:.0f}) "
+                     f"taken as the art; {int(wm.sum())} cells under yellow watermark lettering ignored unless enclosed")
+    else:
+        perimeter = np.concatenate([fills[0], fills[-1], fills[:, 0], fills[:, -1]])
+        art = np.abs(fills - np.median(perimeter, 0)).sum(2) >= 30
+    empty = ~art
 
     items = _legend(rgb, int(grid.y0 + grid.py * grid.ny) + 2, min(px, py))
     if len(items) < 2:
         raise ChartError("no colour legend found below the grid")
     swatches = np.array([col for col, _, _ in items])
     widths = [wd for _, wd, _ in items]
-    counts = [ocr.read_number(rgb, box) for _, _, box in items]
+    counts = [ocr.read_count(rgb, box, after) for _, _, (box, after) in items]
 
     X = fills[~empty]
     lab, colours = match_to_legend(X, swatches)
@@ -235,19 +370,32 @@ def read_chart(rgba):
     split_notes = _split_merged(lab2, masks[~empty], colours, widths, counts)
     labels = np.full(empty.shape, -1)
     labels[~empty] = lab2
+    all_labels = nearest(fills.reshape(-1, 3), colours).reshape(empty.shape)
+    all_labels[~empty] = lab2
     rc = np.argwhere(~empty)
     relabelled = [(int(rc[j][0]), int(rc[j][1]), int(lab[j]), int(lab2[j])) for j in changed]
 
-    chart = Chart(grid, labels, colours, swatches, counts, relabelled, split_notes)
-    used = np.bincount(lab2, minlength=len(swatches))
-    if all(c is not None for c in counts):
-        total = sum(counts)
-        chart.notes.append(f"legend total {total} beads, found {int((~empty).sum())} filled cells")
-        for k, (want, got) in enumerate(zip(counts, used)):
-            if want != got:
-                chart.notes.append(f"legend entry {k + 1} (colour {tuple(int(v) for v in swatches[k])}): "
-                                   f"legend says {want}, assigned {got}")
-    for k in np.where(used == 0)[0]:
-        chart.notes.append(f"legend entry {k + 1} (colour {tuple(int(v) for v in swatches[k])}) "
-                           "matched no cells; it is probably too close to another legend colour to tell apart")
+    chart = Chart(grid, labels, colours, swatches, counts, relabelled, notes + split_notes,
+                  fills, all_labels, faded, light)
+    chart.notes += count_notes(chart)
     return chart
+
+
+def count_notes(chart):
+    """Compare assigned cells per legend entry with the legend counts."""
+    notes = []
+    lab = chart.labels[chart.labels >= 0]
+    used = np.bincount(lab, minlength=len(chart.swatches))
+    counts = chart.counts
+    if all(c is not None for c in counts):
+        notes.append(f"legend total {sum(counts)} beads, found {len(lab)} filled cells")
+    elif any(c is not None for c in counts):
+        notes.append(f"read {sum(c is not None for c in counts)} of {len(counts)} legend counts")
+    for k, (want, got) in enumerate(zip(counts, used)):
+        if want is not None and want != got:
+            notes.append(f"legend entry {k + 1} (colour {tuple(int(v) for v in chart.swatches[k])}): "
+                         f"legend says {want}, assigned {got}")
+    for k in np.where(used == 0)[0]:
+        notes.append(f"legend entry {k + 1} (colour {tuple(int(v) for v in chart.swatches[k])}) "
+                     "matched no cells; it is probably too close to another legend colour to tell apart")
+    return notes

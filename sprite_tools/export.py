@@ -72,15 +72,29 @@ def keep_largest(rgba):
     return sorted(dropped, reverse=True)
 
 
-def remove_fringe(rgba, min_edge_share=0.8, min_pixels=3):
+def remove_fringe(rgba, bg, min_edge_share=0.8, min_pixels=3):
     """Clear blend colours drawn only around the outside to soften the edge against the old background.
 
     A colour counts as fringe when at least min_edge_share of its pixels sit on the
-    outer edge; real outline colours are also used inside the art and stay. Returns
+    outer edge and it lies between the art and the background: closer to the
+    background than the pixels just inside it. An outline that happens to appear
+    only on the outside is darker than what it borders, so it stays. Returns
     [(colour, pixels cleared)].
     """
     op = rgba[..., 3] > 0
     edge = _outer_edge(op)
+    rgb = rgba[..., :3].astype(float)
+    to_bg = np.abs(rgb - bg).sum(2)
+    # how far from the background the opaque non-edge neighbours of each pixel are
+    inside = op & ~edge
+    p_in, p_d = np.pad(inside, 1), np.pad(to_bg, 1)
+    tot = np.zeros(op.shape)
+    cnt = np.zeros(op.shape)
+    for dy, dx in ((0, 1), (2, 1), (1, 0), (1, 2)):
+        m = p_in[dy:dy + op.shape[0], dx:dx + op.shape[1]]
+        tot += np.where(m, p_d[dy:dy + op.shape[0], dx:dx + op.shape[1]], 0)
+        cnt += m
+    inner = np.where(cnt > 0, tot / np.maximum(cnt, 1), np.nan)
     cols, inv = np.unique(rgba[op][:, :3], axis=0, return_inverse=True)
     inv = inv.ravel()
     on_edge = edge[op]
@@ -88,10 +102,13 @@ def remove_fringe(rgba, min_edge_share=0.8, min_pixels=3):
     removed = []
     for k, c in enumerate(cols):
         m = inv == k
-        if m.sum() >= min_pixels and on_edge[m].mean() >= min_edge_share:
-            hit = edge & (rgba[..., :3] == c).all(2) & op
-            clear |= hit
-            removed.append((tuple(int(v) for v in c), int(hit.sum())))
+        if m.sum() < min_pixels or on_edge[m].mean() < min_edge_share:
+            continue
+        hit = edge & (rgba[..., :3] == c).all(2) & op
+        if not np.nanmedian(inner[hit] - to_bg[hit]) > 0:
+            continue
+        clear |= hit
+        removed.append((tuple(int(v) for v in c), int(hit.sum())))
     rgba[clear] = 0
     return removed
 

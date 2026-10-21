@@ -27,18 +27,18 @@
     "dropped a separate 1-pixel part around x 75, y 92 (before trimming); use --keep-all to keep separate parts",
     "dropped a separate 1-pixel part around x 2, y 86 (before trimming); use --keep-all to keep separate parts",
     "dropped a separate 1-pixel part around x 2, y 8 (before trimming); use --keep-all to keep separate parts",
-    "removed 6 edge pixels of fringe colour (128, 128, 84) (only used around the outside); use --keep-fringe to keep them",
-    "removed 9 edge pixels of fringe colour (135, 141, 81) (only used around the outside); use --keep-fringe to keep them",
-    "removed 53 edge pixels of fringe colour (137, 136, 98) (only used around the outside); use --keep-fringe to keep them",
-    "removed 7 edge pixels of fringe colour (178, 174, 126) (only used around the outside); use --keep-fringe to keep them",
-    "removed 7 edge pixels of fringe colour (226, 221, 217) (only used around the outside); use --keep-fringe to keep them",
+    "removed 22 edge pixels of fringe colour (130, 129, 88) (only used around the outside); use --keep-fringe to keep them",
+    "removed 36 edge pixels of fringe colour (140, 138, 106) (only used around the outside); use --keep-fringe to keep them",
+    "removed 10 edge pixels of fringe colour (151, 132, 90) (only used around the outside); use --keep-fringe to keep them",
+    "removed 7 edge pixels of fringe colour (177, 173, 124) (only used around the outside); use --keep-fringe to keep them",
+    "removed 11 edge pixels of fringe colour (232, 224, 217) (only used around the outside); use --keep-fringe to keep them",
     "removed 2 stray edge pixels"
   ],
   "pixel_size": [
     107,
     78
   ],
-  "colours": 27,
+  "colours": 26,
   "files": {
     "sprite": "sprites/dragonite/dragonite_107x78.png",
     "upscaled": "sprites/dragonite/dragonite_963w.png",

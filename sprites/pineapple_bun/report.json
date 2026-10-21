@@ -1,0 +1,58 @@
+{
+  "mode": "image",
+  "grid": {
+    "x0": 19.990616279069762,
+    "px": 11.418767441860583,
+    "nx": 86,
+    "y0": 19.99029411764701,
+    "py": 11.419411764706,
+    "ny": 85
+  },
+  "background": [
+    251,
+    234,
+    212
+  ],
+  "notes": [
+    "17 pixels are close to the background colour but enclosed by the art, so they were kept (around x 38-53, y 30-48 before trimming); use --clear-holes if they are background showing through",
+    "dropped a separate 7-pixel part around x 46, y 6 (before trimming); use --keep-all to keep separate parts",
+    "dropped a separate 6-pixel part around x 73, y 18 (before trimming); use --keep-all to keep separate parts",
+    "dropped a separate 6-pixel part around x 64, y 78 (before trimming); use --keep-all to keep separate parts",
+    "dropped a separate 4-pixel part around x 42, y 8 (before trimming); use --keep-all to keep separate parts",
+    "dropped a separate 4-pixel part around x 13, y 68 (before trimming); use --keep-all to keep separate parts",
+    "dropped a separate 4-pixel part around x 4, y 8 (before trimming); use --keep-all to keep separate parts",
+    "dropped a separate 3-pixel part around x 79, y 60 (before trimming); use --keep-all to keep separate parts",
+    "dropped a separate 3-pixel part around x 66, y 11 (before trimming); use --keep-all to keep separate parts",
+    "dropped a separate 3-pixel part around x 10, y 15 (before trimming); use --keep-all to keep separate parts",
+    "dropped a separate 2-pixel part around x 83, y 51 (before trimming); use --keep-all to keep separate parts",
+    "dropped a separate 2-pixel part around x 81, y 3 (before trimming); use --keep-all to keep separate parts",
+    "dropped a separate 2-pixel part around x 78, y 37 (before trimming); use --keep-all to keep separate parts",
+    "dropped a separate 2-pixel part around x 67, y 76 (before trimming); use --keep-all to keep separate parts",
+    "dropped a separate 2-pixel part around x 21, y 81 (before trimming); use --keep-all to keep separate parts",
+    "dropped a separate 2-pixel part around x 6, y 77 (before trimming); use --keep-all to keep separate parts",
+    "dropped a separate 2-pixel part around x 6, y 50 (before trimming); use --keep-all to keep separate parts",
+    "dropped a separate 1-pixel part around x 84, y 13 (before trimming); use --keep-all to keep separate parts",
+    "dropped a separate 1-pixel part around x 83, y 72 (before trimming); use --keep-all to keep separate parts",
+    "dropped a separate 1-pixel part around x 78, y 68 (before trimming); use --keep-all to keep separate parts",
+    "dropped a separate 1-pixel part around x 77, y 8 (before trimming); use --keep-all to keep separate parts",
+    "dropped a separate 1-pixel part around x 65, y 2 (before trimming); use --keep-all to keep separate parts",
+    "dropped a separate 1-pixel part around x 55, y 1 (before trimming); use --keep-all to keep separate parts",
+    "dropped a separate 1-pixel part around x 28, y 6 (before trimming); use --keep-all to keep separate parts",
+    "dropped a separate 1-pixel part around x 26, y 4 (before trimming); use --keep-all to keep separate parts",
+    "dropped a separate 1-pixel part around x 24, y 79 (before trimming); use --keep-all to keep separate parts",
+    "dropped a separate 1-pixel part around x 4, y 46 (before trimming); use --keep-all to keep separate parts",
+    "dropped a separate 1-pixel part around x 2, y 28 (before trimming); use --keep-all to keep separate parts",
+    "dropped a separate 1-pixel part around x 0, y 17 (before trimming); use --keep-all to keep separate parts"
+  ],
+  "pixel_size": [
+    43,
+    36
+  ],
+  "colours": 16,
+  "files": {
+    "sprite": "sprites/pineapple_bun/pineapple_bun_43x36.png",
+    "upscaled": "sprites/pineapple_bun/pineapple_bun_989w.png",
+    "preview": "sprites/pineapple_bun/preview_dark.png",
+    "scale": 23
+  }
+}

@@ -114,7 +114,7 @@ def from_chart(rgba, colour_source, cells=None):
     if colour_source is not None:
         src = gridmod.load_rgba(colour_source)
         g, score = gridmod.align_to_cells(src, ch.fills, art)
-        cols, _ = gridmod.sample_cells(src, g, core=0.35)
+        cols, _ = gridmod.sample_cells(src, g)
         notes.append(f"colour source aligned at {g.px:.3f}x{g.py:.3f}px per pixel; "
                      f"colour correlation with the chart {score:.2f}")
         if score < 0.5:
@@ -218,7 +218,7 @@ def main(argv=None):
             report["notes"].append(f"dropped a separate {size}-pixel part around x {x}, y {y} (before trimming); "
                                    "use --keep-all to keep separate parts")
     if mode == "image" and not a.keep_fringe:
-        for colour, n in export.remove_fringe(out):
+        for colour, n in export.remove_fringe(out, np.array(report["background"])):
             report["notes"].append(f"removed {n} edge pixels of fringe colour {colour} (only used around the outside); "
                                    "use --keep-fringe to keep them")
     bg = report.get("background")

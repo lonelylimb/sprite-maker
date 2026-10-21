@@ -151,8 +151,14 @@ def align_to_cells(rgba, ref, mask, min_pitch=3):
     return Grid(ox + dx * px, px, ref.shape[1], oy + dy * py, py, ref.shape[0]), score
 
 
-def sample_cells(rgba, grid, core=0.4):
-    """Median colour and alpha of the central core of every cell -> (ny, nx, 3), (ny, nx)."""
+def dominant(px, tol=30):
+    """Colour shared by the most pixels (within tol, sum of |dRGB|): ignores thin overlays and blur."""
+    near = np.abs(px[:, None] - px[None]).sum(2) <= tol
+    return np.median(px[near[near.sum(1).argmax()]], 0)
+
+
+def sample_cells(rgba, grid, core=0.6):
+    """Dominant colour and median alpha of the central core of every cell -> (ny, nx, 3), (ny, nx)."""
     h, w = rgba.shape[:2]
     cols = np.zeros((grid.ny, grid.nx, 3))
     alpha = np.zeros((grid.ny, grid.nx))
@@ -165,6 +171,6 @@ def sample_cells(rgba, grid, core=0.4):
             hx = max(1.0, grid.px * core / 2)
             xs = slice(max(0, int(round(cx - hx))), min(w, int(round(cx + hx)) + 1))
             blk = rgba[ys, xs].reshape(-1, 4)
-            cols[r, c] = np.median(blk[:, :3], 0)
+            cols[r, c] = dominant(blk[:, :3])
             alpha[r, c] = np.median(blk[:, 3])
     return cols, alpha

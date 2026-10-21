@@ -1,0 +1,4 @@
+numpy>=1.26
+pillow>=10.0
+# optional: reads bead-chart legend counts (also needs the tesseract binary, e.g. apt-get install tesseract-ocr)
+pytesseract>=0.3.10

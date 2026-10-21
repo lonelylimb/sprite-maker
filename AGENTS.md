@@ -6,3 +6,11 @@ Where a watermark or overlay crosses the art, use the colour underneath, not the
 Make the background transparent. Keep the art’s own outline and any shadow that’s drawn as part of it. Remove stray background pixels along the edges.
 Export two PNGs: one at 1 pixel per art pixel, and one scaled up with nearest-neighbour to about 1000px wide.
 Show me a preview on a dark background and tell me the pixel size and anything you weren’t sure about.
+
+## Tools
+
+Start with `python -m sprite_tools INPUT`, then check its preview and notes before showing me. It works out the grid, snaps colours, makes the background transparent and writes the two PNGs, `preview_dark.png` and `report.json` to `sprites/<name>/`. Use `--name` to set the name (lowercase with underscores, e.g. `guava_bowl`). Files are `<name>_<w>x<h>.png` and `<name>_<width>w.png`. Fix by hand anything the tool gets wrong, and tell me what you changed.
+
+If I send two images of the same art (e.g. a bead chart and a clean picture), use the chart for the pixel grid and the clean picture for the colours: `python -m sprite_tools CHART --colour-source PICTURE`. When there's only a chart, use the chart's cell colours. When there's only a picture, cluster its colours.
+
+A bead chart's stated size (e.g. 70x62) includes its empty border. Report the trimmed size of the art itself.

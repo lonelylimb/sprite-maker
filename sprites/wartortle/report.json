@@ -1,0 +1,25 @@
+{
+  "mode": "chart (manual cell classification)",
+  "pixel_size": [
+    32,
+    32
+  ],
+  "chart_cells": [
+    32,
+    32
+  ],
+  "colours": {
+    "#dedad1": 126,
+    "#ae7a3e": 108,
+    "#95afbc": 146,
+    "#63473c": 171,
+    "#303c54": 162
+  },
+  "dropped": [],
+  "files": {
+    "sprite": "sprites/wartortle/wartortle_32x32.png",
+    "upscaled": "sprites/wartortle/wartortle_992w.png",
+    "preview": "sprites/wartortle/preview_dark.png",
+    "scale": 31
+  }
+}

@@ -1,0 +1,31 @@
+{
+  "mode": "image",
+  "grid": {
+    "x0": 337.9293970588242,
+    "px": 5.941205882352923,
+    "nx": 68,
+    "y0": 534.3311666666674,
+    "py": 5.93766666666665,
+    "ny": 60
+  },
+  "background": [
+    252,
+    161,
+    160
+  ],
+  "notes": [
+    "283 pixels are close to the background colour but enclosed by the art, so they were kept (around x 12-54, y 8-38 before trimming); use --clear-holes if they are background showing through",
+    "removed 2 stray edge pixels"
+  ],
+  "pixel_size": [
+    68,
+    60
+  ],
+  "colours": 61,
+  "files": {
+    "sprite": "sprites/guava_bowl/guava_bowl_68x60.png",
+    "upscaled": "sprites/guava_bowl/guava_bowl_1020w.png",
+    "preview": "sprites/guava_bowl/preview_dark.png",
+    "scale": 15
+  }
+}

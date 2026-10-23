@@ -1,0 +1,43 @@
+{
+  "mode": "chart (manual legend)",
+  "chart_grid": {
+    "x0": 36.5546200000002,
+    "px": 20.13875999999988,
+    "nx": 50,
+    "y0": 36.553610000000205,
+    "py": 20.13677999999988,
+    "ny": 55
+  },
+  "pixel_size": [
+    50,
+    55
+  ],
+  "legend": {
+    "A06": 132,
+    "A10": 204,
+    "A13": 114,
+    "A17": 116,
+    "A21": 387,
+    "A26": 182,
+    "B04": 26,
+    "B08": 20,
+    "B15": 28,
+    "B23": 7,
+    "E01": 27,
+    "E20": 66,
+    "F11": 113,
+    "F13": 70,
+    "F18": 10,
+    "G04": 15,
+    "H02": 191,
+    "H13": 150
+  },
+  "count_mismatches": {},
+  "dropped_parts": [],
+  "files": {
+    "sprite": "/home/user/sprite-maker/sprites/mango_parfait/mango_parfait_50x55.png",
+    "upscaled": "/home/user/sprite-maker/sprites/mango_parfait/mango_parfait_1000w.png",
+    "preview": "/home/user/sprite-maker/sprites/mango_parfait/preview_dark.png",
+    "scale": 20
+  }
+}

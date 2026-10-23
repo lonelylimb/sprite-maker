@@ -1,0 +1,68 @@
+{
+  "mode": "chart (manual legend)",
+  "chart_grid": {
+    "x0": 25.377095000000107,
+    "px": 16.083810000000042,
+    "nx": 64,
+    "y0": 50.87920000000006,
+    "py": 16.081600000000066,
+    "ny": 64
+  },
+  "pixel_size": [
+    29,
+    45
+  ],
+  "legend": {
+    "C14": 3151,
+    "F2": 238,
+    "A7": 199,
+    "F13": 65,
+    "A6": 56,
+    "H19": 46,
+    "B26": 43,
+    "A10": 35,
+    "F18": 30,
+    "D12": 21,
+    "G10": 21,
+    "F15": 20,
+    "A11": 16,
+    "C25": 15,
+    "F3": 14,
+    "G4": 14,
+    "M6": 14,
+    "A3": 13,
+    "C5": 13,
+    "F1": 13,
+    "H23": 13,
+    "C17": 12,
+    "A22": 10,
+    "C10": 10,
+    "A26": 9,
+    "G12": 5
+  },
+  "count_mismatches": {
+    "C14": [
+      0,
+      3151
+    ],
+    "F13": [
+      63,
+      65
+    ],
+    "F1": [
+      14,
+      13
+    ],
+    "G12": [
+      6,
+      5
+    ]
+  },
+  "dropped_parts": [],
+  "files": {
+    "sprite": "/home/user/sprite-maker/sprites/lucky_bag/lucky_bag_29x45.png",
+    "upscaled": "/home/user/sprite-maker/sprites/lucky_bag/lucky_bag_986w.png",
+    "preview": "/home/user/sprite-maker/sprites/lucky_bag/preview_dark.png",
+    "scale": 34
+  }
+}

@@ -44,7 +44,8 @@
     "3 cells relabelled by printed-code shape (watermarks or misread colours): r17c39, r28c35, r28c40",
     "dropped a separate 64-pixel part around x 31, y 0 (before trimming); use --keep-all to keep separate parts",
     "945 beads in the sprite; legend counts (art beads) total 945",
-    "bead counts that differ from the legend: F13 63 (legend 65), F18 31 (legend 30), A11 17 (legend 16)"
+    "bead counts that differ from the legend: F13 63 (legend 65), F10 31 (legend 30), A11 17 (legend 16)",
+    "legend entry read as F18 is F10 (corrected by hand): its 31 cells recoloured to F10"
   ],
   "beads": {
     "F02": {
@@ -110,15 +111,6 @@
         49
       ]
     },
-    "F18": {
-      "count": 31,
-      "legend": 30,
-      "rgb": [
-        211,
-        124,
-        70
-      ]
-    },
     "D12": {
       "count": 21,
       "legend": 21,
@@ -135,6 +127,15 @@
         217,
         140,
         57
+      ]
+    },
+    "F10": {
+      "count": 31,
+      "legend": 30,
+      "rgb": [
+        138,
+        69,
+        38
       ]
     },
     "F15": {

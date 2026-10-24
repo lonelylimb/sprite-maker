@@ -1,0 +1,268 @@
+{
+  "mode": "chart",
+  "chart_grid": {
+    "x0": 30.617040000000166,
+    "px": 16.98191999999992,
+    "nx": 60,
+    "y0": 56.58146500000017,
+    "py": 16.995069999999902,
+    "ny": 58
+  },
+  "faded_chart": false,
+  "legend_entries": 23,
+  "legend_counts": [
+    712,
+    368,
+    137,
+    111,
+    94,
+    91,
+    84,
+    76,
+    75,
+    70,
+    69,
+    50,
+    42,
+    41,
+    40,
+    38,
+    29,
+    29,
+    27,
+    26,
+    25,
+    20,
+    17
+  ],
+  "notes": [
+    "dropped a separate 48-pixel part around x 3, y 44 (before trimming); use --keep-all to keep separate parts",
+    "dropped a separate 35-pixel part around x 51, y 48 (before trimming); use --keep-all to keep separate parts",
+    "dropped a separate 26-pixel part around x 52, y 11 (before trimming); use --keep-all to keep separate parts",
+    "dropped a separate 25-pixel part around x 10, y 51 (before trimming); use --keep-all to keep separate parts",
+    "dropped a separate 22-pixel part around x 54, y 19 (before trimming); use --keep-all to keep separate parts",
+    "dropped a separate 18-pixel part around x 4, y 7 (before trimming); use --keep-all to keep separate parts",
+    "2097 beads in the sprite; legend counts (art beads) total 2271",
+    "bead counts that differ from the legend: A01 655 (legend 712), F07 296 (legend 368), A06 81 (legend 84), A13 67 (legend 76), F11 74 (legend 75), F01 21 (legend 38), G08 28 (legend 29), B28 25 (legend 26), F06 4 (legend 17)"
+  ],
+  "beads": {
+    "A01": {
+      "count": 655,
+      "legend": 712,
+      "rgb": [
+        250,
+        244,
+        200
+      ]
+    },
+    "F07": {
+      "count": 296,
+      "legend": 368,
+      "rgb": [
+        151,
+        25,
+        55
+      ]
+    },
+    "A07": {
+      "count": 137,
+      "legend": 137,
+      "rgb": [
+        254,
+        139,
+        76
+      ]
+    },
+    "F02": {
+      "count": 111,
+      "legend": 111,
+      "rgb": [
+        252,
+        61,
+        70
+      ]
+    },
+    "F08": {
+      "count": 94,
+      "legend": 94,
+      "rgb": [
+        188,
+        0,
+        40
+      ]
+    },
+    "A11": {
+      "count": 91,
+      "legend": 91,
+      "rgb": [
+        255,
+        221,
+        153
+      ]
+    },
+    "A06": {
+      "count": 81,
+      "legend": 84,
+      "rgb": [
+        254,
+        172,
+        76
+      ]
+    },
+    "A13": {
+      "count": 67,
+      "legend": 76,
+      "rgb": [
+        255,
+        195,
+        101
+      ]
+    },
+    "F11": {
+      "count": 74,
+      "legend": 75,
+      "rgb": [
+        90,
+        33,
+        33
+      ]
+    },
+    "M13": {
+      "count": 70,
+      "legend": 70,
+      "rgb": [
+        209,
+        144,
+        102
+      ]
+    },
+    "A18": {
+      "count": 69,
+      "legend": 69,
+      "rgb": [
+        254,
+        190,
+        125
+      ]
+    },
+    "G20": {
+      "count": 50,
+      "legend": 50,
+      "rgb": [
+        169,
+        64,
+        35
+      ]
+    },
+    "A12": {
+      "count": 42,
+      "legend": 42,
+      "rgb": [
+        254,
+        159,
+        114
+      ]
+    },
+    "A10": {
+      "count": 41,
+      "legend": 41,
+      "rgb": [
+        247,
+        124,
+        49
+      ]
+    },
+    "G19": {
+      "count": 40,
+      "legend": 40,
+      "rgb": [
+        224,
+        121,
+        53
+      ]
+    },
+    "F01": {
+      "count": 21,
+      "legend": 38,
+      "rgb": [
+        253,
+        149,
+        123
+      ]
+    },
+    "F17": {
+      "count": 29,
+      "legend": 29,
+      "rgb": [
+        230,
+        156,
+        121
+      ]
+    },
+    "G08": {
+      "count": 28,
+      "legend": 29,
+      "rgb": [
+        117,
+        56,
+        50
+      ]
+    },
+    "F05": {
+      "count": 27,
+      "legend": 27,
+      "rgb": [
+        231,
+        0,
+        47
+      ]
+    },
+    "B28": {
+      "count": 25,
+      "legend": 26,
+      "rgb": [
+        158,
+        229,
+        185
+      ]
+    },
+    "B27": {
+      "count": 25,
+      "legend": 25,
+      "rgb": [
+        204,
+        225,
+        175
+      ]
+    },
+    "G10": {
+      "count": 20,
+      "legend": 20,
+      "rgb": [
+        217,
+        140,
+        57
+      ]
+    },
+    "F06": {
+      "count": 4,
+      "legend": 17,
+      "rgb": [
+        148,
+        54,
+        48
+      ]
+    }
+  },
+  "pixel_size": [
+    57,
+    56
+  ],
+  "colours": 23,
+  "files": {
+    "sprite": "sprites/strawberry_toast/strawberry_toast_57x56.png",
+    "upscaled": "sprites/strawberry_toast/strawberry_toast_1026w.png",
+    "preview": "sprites/strawberry_toast/preview_dark.png",
+    "scale": 18
+  }
+}

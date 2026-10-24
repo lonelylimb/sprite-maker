@@ -39,14 +39,16 @@
     5
   ],
   "notes": [
+    "printed codes: the 79 cells labelled F13 by colour read as F02; renamed",
+    "printed codes: the 63 cells labelled F03 by colour read as F13; renamed",
+    "printed codes: 1 more cells relabelled by their print and colour",
     "37 blank cells enclosed by the art read as white beads (H19 x37)",
     "3087 cells of background bead(s) C14 made transparent",
-    "41 cells relabelled by printed-code shape (watermarks or misread colours): r12c40, r13c30, r13c31, r17c39, r19c32, r20c44, r27c39, r28c35, r30c39, r31c25, r32c23, r32c24, r32c37, r32c38, r32c39, r32c42, r32c43, r34c28, r34c43, r35c42, r36c25, r36c40, r37c22, r37c26, r38c24, r38c43, r39c32, r40c32, r42c28, r42c38, r43c21, r43c27, r43c31, r45c23, r45c27, r45c35, r46c29, r47c25, r47c26, r47c28, r47c30",
+    "40 cells relabelled by printed-code shape (watermarks or misread colours): r12c40, r13c30, r13c31, r19c32, r20c44, r27c39, r28c35, r30c39, r31c25, r32c23, r32c24, r32c37, r32c38, r32c39, r32c42, r32c43, r34c28, r34c43, r35c42, r36c25, r36c40, r37c22, r37c26, r38c24, r38c43, r39c32, r40c32, r42c28, r42c38, r43c21, r43c27, r43c31, r45c23, r45c27, r45c35, r46c29, r47c25, r47c26, r47c28, r47c30",
     "dropped a separate 64-pixel part around x 31, y 0 (before trimming); use --keep-all to keep separate parts",
     "945 beads in the sprite; legend counts (art beads) total 944",
-    "bead counts that differ from the legend: F02 173 (legend 238), F13 79 (legend 64), F18 31 (legend 30), A11 17 (legend 16), F03 63 (legend 14)",
-    "hand fixes: F02/F03/F13 relabelled from printed codes (tool had swapped these near-identical reds); r27c35 F18->F13 under watermark; r16c39 A11->G12 as printed",
-    "bead counts that differ from the legend after hand fixes: G12 6 (legend 5)"
+    "hand fix: r27c35 (chart row 27, column 35) is under the watermark; read F18 by colour, set to F13 from the cells around it",
+    "bead counts that differ from the legend: G12 6 (legend 5): the chart prints G12 in 6 cells"
   ],
   "beads": {
     "F02": {

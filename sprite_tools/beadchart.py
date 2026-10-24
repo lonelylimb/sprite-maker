@@ -1,8 +1,10 @@
 """Read a bead / cross-stitch chart: grid of coloured cells with printed codes and a colour legend."""
 
+import re
 from dataclasses import dataclass, field
 
 import numpy as np
+from PIL import Image
 
 from . import ocr
 from .export import components, outside_background
@@ -447,6 +449,171 @@ def _paper(fills):
     return (fills.min(2) > 200) & (np.ptp(fills, 2) < 14)
 
 
+_GH, _GW = 6, 4  # a printed character, resampled: rows x (columns + 1 gap column)
+
+
+def _printed_forms(code):
+    """How a chart may print a code: 'F02' as 'F2' or 'F02'."""
+    m = re.fullmatch(r"([A-Z]*)(\d+)", code)
+    return [code] if not m else list(dict.fromkeys([f"{m[1]}{int(m[2])}", code]))
+
+
+def _code_crop(blk, fill):
+    """Tight crop of the printed code in a cell (0..1 ink), or None when no code is visible.
+
+    Ink is measured relative to the cell's own fill, so dark codes on dark beads read as well
+    as on light ones.
+    """
+    lum, fl = blk.mean(2), fill.mean()
+    dark = np.clip(((fl - lum) / max(fl, 1) - 0.2) / 0.3, 0, 1)
+    light = np.clip(((lum - fl) / max(255 - fl, 1) - 0.5) / 0.3, 0, 1)
+    m = dark if dark.sum() >= light.sum() else light
+    xs, ys = np.where(m.max(0) > 0.5)[0], np.where(m.max(1) > 0.5)[0]
+    if len(xs) < 2 or len(ys) < 3:
+        return None
+    return m[ys.min():ys.max() + 1, xs.min():xs.max() + 1]
+
+
+def _glyphs(crop, n):
+    """The crop resampled to n characters wide; one (_GH, _GW - 1) patch per character."""
+    im = Image.fromarray((crop * 255).astype(np.uint8)).resize((_GW * n - 1, _GH), Image.BILINEAR)
+    z = np.asarray(im) / 255.0
+    return np.stack([z[:, _GW * i:_GW * i + _GW - 1] for i in range(n)])
+
+
+def _read_printed_codes(rgb, grid, fills, cells, lab, codes, beads, counts, rounds=3, margin=0.3, near=15):
+    """Check each cell's label against the code printed in it.
+
+    Codes are ~5px tall, too small for OCR, but every chart prints them in one font: the
+    reference image of each character (e.g. the '3' of A3, H23 and F13) is the median of
+    that character over all cells, taken per code first so that one wrongly named group
+    cannot outvote the others. A cell then reads as the legend code whose characters
+    (and length: F3 is two characters, F13 three) best match its print.
+
+    A label group whose cells mostly read as another code is renamed: colour clustering
+    can pair near-identical printed shades with the wrong codes. A single cell is then
+    scored on its print and colour together, and moves only to a code whose printed colour
+    is at most `near` further from the cell's colour than its current code's: where colours
+    clearly differ the colour is trusted, since watermarks can hide part of the print, and
+    where prints look alike at this size (2 and 3) the colour decides. Where the legend
+    gives counts, no rename or move may take them further from the legend.
+    Returns the new labels and the renamed groups as (old code, new code, cells).
+    """
+    n = len(codes)
+    crops = {}
+    inset = 1
+    for i, (r, c) in enumerate(cells):
+        l, t, rr, b = grid.cell_box(c, r)
+        cr = _code_crop(rgb[t + inset:b - inset, l + inset:rr - inset].astype(float), fills[i])
+        if cr is not None:
+            crops[i] = cr
+    if len(crops) < 20:
+        return lab, []
+    idx = np.array(sorted(crops))
+    widths = np.array([crops[i].shape[1] for i in idx])
+
+    def lengths(printed):
+        # median printed width per code length, from the current labels; how far widths are from it
+        ln = np.array([len(printed[lab[i]]) for i in idx])
+        ks = np.unique(ln)
+        med = np.array([np.median(widths[ln == k]) for k in ks])
+        read = ks[np.abs(widths[:, None] - med[None]).argmin(1)]
+        return read, np.abs(widths - med[np.searchsorted(ks, ln)]).mean()
+
+    # the print style ('F2' or 'F02') whose code lengths explain the measured widths best
+    printed, read_len, best = None, None, np.inf
+    for f in ([_printed_forms(c)[0] for c in codes], [_printed_forms(c)[-1] for c in codes]):
+        rl, err = lengths(f)
+        if err < best:
+            printed, read_len, best = f, rl, err
+    glyphs = {i: _glyphs(crops[i], k) for i, k in zip(idx, read_len)}
+
+    def count_error(labels):
+        used = np.bincount(labels, minlength=n)
+        return sum(abs(int(used[j]) - c) for j, c in enumerate(counts) if c is not None)
+
+    cur = lab.copy()
+    for _ in range(rounds):
+        per = {}
+        for i in idx:
+            p = printed[cur[i]]
+            if len(glyphs[i]) == len(p):
+                for pos, ch in enumerate(p):
+                    per.setdefault(ch, {}).setdefault(cur[i], []).append(glyphs[i][pos])
+        ref = {ch: np.median([np.median(v, 0) for v in byc.values()], 0) for ch, byc in per.items()}
+        # text cost of every cell against every code
+        cost = np.full((len(idx), n), 5.0)
+        for a, i in enumerate(idx):
+            g = glyphs[i]
+            for j, p in enumerate(printed):
+                if len(p) == len(g):
+                    cost[a, j] = np.mean([((g[pos] - ref[ch]) ** 2).mean() * 10 if ch in ref else 2
+                                          for pos, ch in enumerate(p)])
+        reading = cost.argmin(1)
+        new = cur.copy()
+        # whole groups first: colour clusters paired with the wrong code. Where the legend
+        # gives counts, a rename must not take them further from the legend (a code printed
+        # too faintly to read must not be merged away into a look-alike)
+        moves = []
+        for j in np.unique(cur):
+            here = cur[idx] == j
+            if here.sum() < 3:
+                continue
+            votes = np.bincount(reading[here], minlength=n)
+            k = int(votes.argmax())
+            if k != j and votes[k] >= 0.5 * here.sum():
+                moves.append((votes[k] / here.sum(), j, k))
+        pending = sorted(moves, reverse=True)
+        while pending:
+            for m in pending:
+                _, j, k = m
+                trial = np.where(new == j, k, new)
+                if count_error(trial) <= count_error(new):
+                    new = trial
+                    pending.remove(m)
+                    break
+            else:
+                break
+        # then single cells, to codes their colour does not rule out; a code with
+        # no cells yet gets the printed shade its official colour maps to on this chart
+        # (from the cells that also read as the code, so stray cells such as header numbers
+        # coloured like a bead do not pull its colour away)
+        sure = np.zeros(len(lab), bool)
+        sure[idx] = reading == new[idx]
+        have = np.array([((new == j) & sure).sum() >= 3 for j in range(n)])
+        model = np.array([np.median(fills[(new == j) & sure], 0) if have[j] else beads[j] for j in range(n)])
+        if have.sum() >= 6 and not have.all():
+            hj = np.where(have)[0]
+            fit = fit_affine(beads[hj], model[hj], np.array([((new == j) & sure).sum() for j in hj], float))
+            model[~have] = apply_affine(beads[~have], fit)
+        cand = []
+        for a, i in enumerate(idx):
+            j = new[i]
+            d = np.linalg.norm(model - fills[i], axis=1)
+            both = np.where(d < d[j] + near, cost[a] + d / 20, np.inf)  # colour does not rule it out
+            k = int(both.argmin())
+            if k != j and both[j] - both[k] > margin:
+                cand.append((both[j] - both[k], i, j, k))
+        # clearest reads first; a move must not take both codes further from the legend counts
+        used = np.bincount(new, minlength=n)
+        for _, i, j, k in sorted(cand, reverse=True):
+            if None not in (counts[j], counts[k]) and used[k] >= counts[k] and used[j] <= counts[j]:
+                continue
+            new[i] = k
+            used[j] -= 1
+            used[k] += 1
+        if np.array_equal(new, cur):
+            break
+        cur = new
+    renamed = []
+    for j in np.unique(lab):
+        here = lab == j
+        k = int(np.bincount(cur[here], minlength=n).argmax())
+        if here.sum() >= 3 and k != j and (cur[here] == k).mean() >= 0.5:
+            renamed.append((codes[j], codes[k], int(here.sum())))
+    return cur, renamed
+
+
 def read_chart_codes(rgba, cells, codes, counts, beads, background=()):
     """Read a chart whose legend codes (and counts) are given; skips legend detection and OCR.
 
@@ -508,6 +675,17 @@ def read_chart_codes(rgba, cells, codes, counts, beads, background=()):
             used[b] += 1
             lab[j] = b
             relabel_idx.add(j)
+    rc = np.argwhere(use)
+    # the printed codes have the last word over colour where they are readable
+    read, renamed = _read_printed_codes(rgb, grid, X, rc, lab, codes, beads, counts)
+    for a, b, k in renamed:
+        notes.append(f"printed codes: the {k} cells labelled {a} by colour read as {b}; renamed")
+    by_code = np.where(read != lab)[0]
+    lone = [j for j in by_code if not any(codes[lab[j]] == a for a, _, _ in renamed)]
+    if lone:
+        notes.append(f"printed codes: {len(lone)} more cells relabelled by their print and colour")
+    relabel_idx = set(relabel_idx) | set(lone)
+    lab = read
     relabel_idx = sorted(j for j in relabel_idx if to_bead[first[j]] != lab[j])
     if holes.any():
         hl = lab[holes[use]]
@@ -516,7 +694,6 @@ def read_chart_codes(rgba, cells, codes, counts, beads, background=()):
 
     labels = np.full(paper.shape, -1)
     labels[use] = lab
-    rc = np.argwhere(use)
     relabelled = [(int(rc[j][0]), int(rc[j][1]), -1, int(lab[j])) for j in relabel_idx]
     bg = np.isin(labels, list(background))
     if bg.any():

@@ -1,2 +1,5 @@
 __pycache__/
 *.pyc
+
+# sprite outputs are sent in chat, not committed
+sprites/

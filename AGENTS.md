@@ -11,6 +11,8 @@ Show me a preview on a dark background and tell me the pixel size and anything y
 
 Start with `python -m sprite_tools INPUT`, then check its preview and notes before showing me. It works out the grid, snaps colours, makes the background transparent and writes the two PNGs, `preview_dark.png` and `report.json` to `sprites/<name>/`. Use `--name` to set the name (lowercase with underscores, e.g. `guava_bowl`). Files are `<name>_<w>x<h>.png` and `<name>_<width>w.png`. Fix by hand anything the tool gets wrong, and tell me what you changed.
 
+Send me the finished PNGs (both sizes and the preview) in this chat. Never commit or push anything under `sprites/`; the folder is git-ignored and stays local.
+
 If I send two images of the same art (e.g. a bead chart and a clean picture), use the chart for the pixel grid and the clean picture for the colours: `python -m sprite_tools CHART --colour-source PICTURE`. When there's only a chart, use the chart's cell colours. When there's only a picture, cluster its colours.
 
 A bead chart's stated size (e.g. 70x62) includes its empty border. Report the trimmed size of the art itself.

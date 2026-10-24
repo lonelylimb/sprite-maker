@@ -280,9 +280,9 @@
   ],
   "colours": 25,
   "files": {
-    "sprite": "sprites/lucky_bag/lucky_bag_29x45.png",
-    "upscaled": "sprites/lucky_bag/lucky_bag_986w.png",
-    "preview": "sprites/lucky_bag/preview_dark.png",
+    "sprite": "sprites/pineapple/pineapple_29x45.png",
+    "upscaled": "sprites/pineapple/pineapple_986w.png",
+    "preview": "sprites/pineapple/preview_dark.png",
     "scale": 34
   }
 }

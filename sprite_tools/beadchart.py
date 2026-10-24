@@ -7,7 +7,7 @@ import numpy as np
 from . import ocr
 from .export import components, outside_background
 from .grid import Grid, estimate_pitch, refine_axis
-from .palette import match_to_legend, nearest
+from .palette import apply_affine, cluster_colours, fit_affine, match_to_legend, nearest
 
 
 class ChartError(ValueError):
@@ -301,9 +301,8 @@ def _split_merged(labels, masks, colours, widths, counts):
     return notes
 
 
-def read_chart(rgba, cells=None):
-    """Read a chart. cells=(nx, ny) fixes the grid size when the chart states it."""
-    rgb = rgba[..., :3]
+def _read_cells(rgb, cells):
+    """Grid of the chart and per cell: fill colour, code mask, darkest print, watermark-yellow share."""
     vx, hy = _line_profiles(rgb.mean(2))
     ox, px, nx = _axis_lines(vx, cells and cells[0])
     oy, py, ny = _axis_lines(hy, cells and cells[1])
@@ -318,6 +317,14 @@ def read_chart(rgba, cells=None):
     for r in range(ny):
         for c in range(nx):
             fills[r, c], masks[r, c], dark[r, c], yellow[r, c] = _read_cell(rgb, grid.cell_box(c, r), inset, size)
+    return grid, fills, masks, dark, yellow
+
+
+def read_chart(rgba, cells=None):
+    """Read a chart. cells=(nx, ny) fixes the grid size when the chart states it."""
+    rgb = rgba[..., :3]
+    grid, fills, masks, dark, yellow = _read_cells(rgb, cells)
+    ox, px, nx, oy, py, ny = grid.x0, grid.px, grid.nx, grid.y0, grid.py, grid.ny
 
     if not cells:
         # drop number headers: an outer row/column whose cells are all the same non-white grey
@@ -399,3 +406,126 @@ def count_notes(chart):
         notes.append(f"legend entry {k + 1} (colour {tuple(int(v) for v in chart.swatches[k])}) "
                      "matched no cells; it is probably too close to another legend colour to tell apart")
     return notes
+
+
+def _match_clusters(C, sizes, beads, counts, rounds=6):
+    """Pair printed colour clusters with legend beads. Returns {bead index: cluster index}.
+
+    Chart apps print beads in their own shades, so the official colours are only a
+    starting point: a colour transform from official to printed colours is fitted on
+    the pairs found so far and the pairing is redone. Where the legend states counts,
+    a cluster whose size is far from a bead's count is a poor match for it.
+    """
+    T = beads.copy()
+    have = np.array([n is not None for n in counts])
+    want = np.array([n or 0 for n in counts], float)
+    pairs = {}
+    for _ in range(rounds):
+        cost = np.linalg.norm(C[:, None] - T[None], axis=2) / 40
+        ratio = np.abs(np.log((sizes[:, None] + 1) / (want[None] + 1)))
+        cost = cost + np.where(have[None], 2 * ratio, 0)
+        new, free_c, free_b = {}, set(range(len(C))), set(range(len(beads)))
+        for i, j in zip(*np.unravel_index(np.argsort(cost, axis=None), cost.shape)):
+            if i in free_c and j in free_b:
+                new[int(j)] = int(i)
+                free_c.discard(i)
+                free_b.discard(j)
+            if not free_b or not free_c:
+                break
+        if new == pairs:
+            break
+        pairs = new
+        js = list(pairs)
+        if len(js) >= 6:
+            w = np.maximum(sizes[[pairs[j] for j in js]], 1)
+            T = apply_affine(beads, fit_affine(beads[js], C[[pairs[j] for j in js]], w))
+    return pairs
+
+
+def _paper(fills):
+    """Blank paper: light and neutral (cells crossed by a thick grid line come out light grey)."""
+    return (fills.min(2) > 200) & (np.ptp(fills, 2) < 14)
+
+
+def read_chart_codes(rgba, cells, codes, counts, beads, background=()):
+    """Read a chart whose legend codes (and counts) are given; skips legend detection and OCR.
+
+    beads are the official colours of codes; the returned Chart's colours are those, so
+    the sprite uses true bead colours. background lists legend indices of beads that
+    fill the chart's background (transparent).
+    """
+    rgb = rgba[..., :3]
+    grid, fills, masks, dark, yellow = _read_cells(rgb, cells)
+    n = len(codes)
+    paper = _paper(fills)
+    # white beads print as blank paper: the blank cells enclosed by the art are one more printed colour
+    cc, sizes = components(~paper)
+    main = cc == int(np.argmax(sizes)) + 1 if len(sizes) else ~paper
+    holes = paper & ~outside_background(~main)
+    use = ~paper | holes
+    X = fills[use]
+    # fine clusters: chart apps can print two beads only a few RGB steps apart
+    C, lab = cluster_colours(fills[~paper], max_colours=min(128, 4 * n), merge_tol=6)
+    if holes.any():
+        C = np.vstack([C, np.median(fills[holes], 0)])
+        lab = np.r_[lab, np.full(int(holes.sum()), len(C) - 1)]
+        order = np.r_[np.where((~paper)[use])[0], np.where(holes[use])[0]]
+        lab = lab[np.argsort(order)]
+    # a watermark shifts a cell's colour but not its printed code: cells move to the cluster that
+    # cells with the same-looking code agree on, so cluster sizes come close to the legend counts
+    first = lab.copy()
+    lab, changed = _repair_by_code_shape(lab, X, masks[use])
+    sizes = np.bincount(lab, minlength=len(C)).astype(float)
+    C = np.array([np.median(X[lab == k], 0) if sizes[k] else C[k] for k in range(len(C))])
+    pairs = _match_clusters(C, sizes, beads, counts)
+    notes = []
+    missing = [codes[j] for j in range(n) if j not in pairs]
+    if missing:
+        notes.append(f"no printed colour found for {', '.join(missing)}")
+    # clusters left over (stray shades) join the nearest paired cluster
+    js = sorted(pairs)
+    paired = np.array([pairs[j] for j in js])
+    to_bead = np.array(js)[nearest(C, C[paired])]
+    to_bead[paired] = js
+    lab = to_bead[lab]
+    # undo moves that took a cell from a bead short of its legend count to one over it
+    used = np.bincount(lab, minlength=n)
+    for j in changed:
+        a, b = to_bead[first[j]], lab[j]
+        if a != b and None not in (counts[a], counts[b]) and used[b] > counts[b] and used[a] < counts[a]:
+            used[a] += 1
+            used[b] -= 1
+            lab[j] = a
+    relabel_idx = {j for j in changed if to_bead[first[j]] != lab[j]}
+    # once more on bead labels (several fine clusters can share a bead and split the votes above),
+    # taking a change only where it brings the legend counts closer
+    lab2, changed = _repair_by_code_shape(lab, X, masks[use])
+    used = np.bincount(lab, minlength=n)
+    for j in changed:
+        a, b = lab[j], lab2[j]
+        if counts[a] is None or counts[b] is None or (used[a] > counts[a] and used[b] < counts[b]):
+            used[a] -= 1
+            used[b] += 1
+            lab[j] = b
+            relabel_idx.add(j)
+    relabel_idx = sorted(j for j in relabel_idx if to_bead[first[j]] != lab[j])
+    if holes.any():
+        hl = lab[holes[use]]
+        names = ", ".join(f"{codes[k]} x{int((hl == k).sum())}" for k in np.unique(hl))
+        notes.append(f"{int(holes.sum())} blank cells enclosed by the art read as white beads ({names})")
+
+    labels = np.full(paper.shape, -1)
+    labels[use] = lab
+    rc = np.argwhere(use)
+    relabelled = [(int(rc[j][0]), int(rc[j][1]), -1, int(lab[j])) for j in relabel_idx]
+    bg = np.isin(labels, list(background))
+    if bg.any():
+        notes.append(f"{int(bg.sum())} cells of background bead(s) {', '.join(codes[k] for k in background)} "
+                     "made transparent")
+    labels[bg] = -1
+
+    chart = Chart(grid, labels, beads.copy(), beads.copy(), list(counts), relabelled, notes, fills,
+                  labels.copy(), False, None)
+    chart.codes = list(codes)
+    chart.background = list(background)
+    return chart

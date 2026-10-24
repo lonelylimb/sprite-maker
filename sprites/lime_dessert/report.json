@@ -1,0 +1,216 @@
+{
+  "mode": "chart",
+  "chart_grid": {
+    "x0": 31.045180000000197,
+    "px": 19.581639999999922,
+    "nx": 52,
+    "y0": 74.73538499999954,
+    "py": 19.591229999999886,
+    "ny": 52
+  },
+  "faded_chart": false,
+  "legend_entries": 18,
+  "legend_counts": [
+    23,
+    134,
+    80,
+    87,
+    113,
+    43,
+    40,
+    35,
+    53,
+    117,
+    16,
+    16,
+    18,
+    24,
+    40,
+    47,
+    173,
+    166
+  ],
+  "notes": [
+    "210 blank cells enclosed by the art read as white beads (H02 x12, H12 x177, H19 x21)",
+    "41 cells relabelled by printed-code shape (watermarks or misread colours): r5c25, r5c26, r13c19, r21c9, r27c9, r27c10, r27c13, r27c38, r28c11, r28c17, r28c32, r29c12, r29c15, r29c33, r29c34, r30c14, r30c17, r32c18, r33c38, r34c27, r34c29, r34c34, r34c36, r34c39, r35c19, r36c14, r36c20, r36c25, r36c31, r36c41, r37c29, r38c17, r38c22, r38c23, r38c24, r38c29, r38c30, r39c26, r39c27, r39c31, r41c27",
+    "dropped a separate 1-pixel part around x 47, y 27 (before trimming); use --keep-all to keep separate parts",
+    "dropped a separate 1-pixel part around x 0, y 27 (before trimming); use --keep-all to keep separate parts",
+    "1225 beads in the sprite; legend counts (art beads) total 1225",
+    "bead counts that differ from the legend: H02 43 (legend 47), H12 177 (legend 173)"
+  ],
+  "beads": {
+    "A03": {
+      "count": 23,
+      "legend": 23,
+      "rgb": [
+        254,
+        255,
+        139
+      ]
+    },
+    "A04": {
+      "count": 134,
+      "legend": 134,
+      "rgb": [
+        251,
+        237,
+        86
+      ]
+    },
+    "A08": {
+      "count": 80,
+      "legend": 80,
+      "rgb": [
+        255,
+        218,
+        69
+      ]
+    },
+    "A22": {
+      "count": 87,
+      "legend": 87,
+      "rgb": [
+        244,
+        245,
+        125
+      ]
+    },
+    "A24": {
+      "count": 113,
+      "legend": 113,
+      "rgb": [
+        247,
+        248,
+        162
+      ]
+    },
+    "B11": {
+      "count": 43,
+      "legend": 43,
+      "rgb": [
+        93,
+        114,
+        42
+      ]
+    },
+    "B14": {
+      "count": 40,
+      "legend": 40,
+      "rgb": [
+        173,
+        233,
+        70
+      ]
+    },
+    "B17": {
+      "count": 35,
+      "legend": 35,
+      "rgb": [
+        155,
+        177,
+        58
+      ]
+    },
+    "G04": {
+      "count": 53,
+      "legend": 53,
+      "rgb": [
+        225,
+        179,
+        131
+      ]
+    },
+    "G08": {
+      "count": 117,
+      "legend": 117,
+      "rgb": [
+        117,
+        56,
+        50
+      ]
+    },
+    "G10": {
+      "count": 16,
+      "legend": 16,
+      "rgb": [
+        217,
+        140,
+        57
+      ]
+    },
+    "G14": {
+      "count": 16,
+      "legend": 16,
+      "rgb": [
+        141,
+        97,
+        76
+      ]
+    },
+    "G15": {
+      "count": 18,
+      "legend": 18,
+      "rgb": [
+        252,
+        249,
+        224
+      ]
+    },
+    "G16": {
+      "count": 24,
+      "legend": 24,
+      "rgb": [
+        242,
+        217,
+        186
+      ]
+    },
+    "G21": {
+      "count": 40,
+      "legend": 40,
+      "rgb": [
+        184,
+        133,
+        88
+      ]
+    },
+    "H02": {
+      "count": 43,
+      "legend": 47,
+      "rgb": [
+        254,
+        255,
+        255
+      ]
+    },
+    "H12": {
+      "count": 177,
+      "legend": 173,
+      "rgb": [
+        255,
+        245,
+        237
+      ]
+    },
+    "H19": {
+      "count": 166,
+      "legend": 166,
+      "rgb": [
+        246,
+        239,
+        226
+      ]
+    }
+  },
+  "pixel_size": [
+    38,
+    45
+  ],
+  "colours": 18,
+  "files": {
+    "sprite": "sprites/lime_dessert/lime_dessert_38x45.png",
+    "upscaled": "sprites/lime_dessert/lime_dessert_988w.png",
+    "preview": "sprites/lime_dessert/preview_dark.png",
+    "scale": 26
+  }
+}

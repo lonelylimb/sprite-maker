@@ -1,0 +1,262 @@
+{
+  "mode": "chart",
+  "chart_grid": {
+    "x0": 25.377095000000107,
+    "px": 16.083810000000042,
+    "nx": 64,
+    "y0": 50.981200000000065,
+    "py": 16.077600000000064,
+    "ny": 64
+  },
+  "faded_chart": false,
+  "legend_entries": 23,
+  "legend_counts": [
+    2968,
+    248,
+    167,
+    84,
+    73,
+    69,
+    67,
+    55,
+    48,
+    46,
+    34,
+    28,
+    27,
+    22,
+    22,
+    22,
+    19,
+    18,
+    18,
+    17,
+    17,
+    14,
+    13
+  ],
+  "notes": [
+    "26 blank cells enclosed by the art read as white beads (H02 x26)",
+    "2904 cells of background bead(s) E15 made transparent",
+    "7 cells relabelled by printed-code shape (watermarks or misread colours): r9c20, r9c21, r9c59, r28c16, r28c35, r28c54, r42c35",
+    "dropped a separate 64-pixel part around x 31, y 0 (before trimming); use --keep-all to keep separate parts",
+    "dropped a separate 14-pixel part around x 18, y 11 (before trimming); use --keep-all to keep separate parts",
+    "dropped a separate 13-pixel part around x 53, y 17 (before trimming); use --keep-all to keep separate parts",
+    "dropped a separate 7-pixel part around x 52, y 47 (before trimming); use --keep-all to keep separate parts",
+    "dropped a separate 4-pixel part around x 14, y 17 (before trimming); use --keep-all to keep separate parts",
+    "1090 beads in the sprite; legend counts (art beads) total 1128",
+    "bead counts that differ from the legend: A06 76 (legend 84), F08 66 (legend 67), A11 27 (legend 55), F10 45 (legend 46), F11 27 (legend 28), H02 25 (legend 27), G07 23 (legend 22), G13 20 (legend 18)",
+    "hand fix: 16 E15 cells inside the right-hand F8 outline filled with E15 instead of transparent"
+  ],
+  "beads": {
+    "A10": {
+      "count": 248,
+      "legend": 248,
+      "rgb": [
+        247,
+        124,
+        49
+      ]
+    },
+    "A14": {
+      "count": 167,
+      "legend": 167,
+      "rgb": [
+        253,
+        84,
+        61
+      ]
+    },
+    "A06": {
+      "count": 76,
+      "legend": 84,
+      "rgb": [
+        254,
+        172,
+        76
+      ]
+    },
+    "A12": {
+      "count": 73,
+      "legend": 73,
+      "rgb": [
+        254,
+        159,
+        114
+      ]
+    },
+    "F05": {
+      "count": 69,
+      "legend": 69,
+      "rgb": [
+        231,
+        0,
+        47
+      ]
+    },
+    "F08": {
+      "count": 66,
+      "legend": 67,
+      "rgb": [
+        188,
+        0,
+        40
+      ]
+    },
+    "A11": {
+      "count": 27,
+      "legend": 55,
+      "rgb": [
+        255,
+        221,
+        153
+      ]
+    },
+    "D12": {
+      "count": 48,
+      "legend": 48,
+      "rgb": [
+        222,
+        154,
+        212
+      ]
+    },
+    "F10": {
+      "count": 45,
+      "legend": 46,
+      "rgb": [
+        138,
+        69,
+        38
+      ]
+    },
+    "G06": {
+      "count": 34,
+      "legend": 34,
+      "rgb": [
+        233,
+        156,
+        23
+      ]
+    },
+    "F11": {
+      "count": 27,
+      "legend": 28,
+      "rgb": [
+        90,
+        33,
+        33
+      ]
+    },
+    "H02": {
+      "count": 25,
+      "legend": 27,
+      "rgb": [
+        254,
+        255,
+        255
+      ]
+    },
+    "E08": {
+      "count": 22,
+      "legend": 22,
+      "rgb": [
+        255,
+        219,
+        233
+      ]
+    },
+    "G07": {
+      "count": 23,
+      "legend": 22,
+      "rgb": [
+        157,
+        91,
+        62
+      ]
+    },
+    "M09": {
+      "count": 22,
+      "legend": 22,
+      "rgb": [
+        165,
+        135,
+        103
+      ]
+    },
+    "G08": {
+      "count": 19,
+      "legend": 19,
+      "rgb": [
+        117,
+        56,
+        50
+      ]
+    },
+    "F14": {
+      "count": 18,
+      "legend": 18,
+      "rgb": [
+        255,
+        169,
+        173
+      ]
+    },
+    "G13": {
+      "count": 20,
+      "legend": 18,
+      "rgb": [
+        183,
+        113,
+        74
+      ]
+    },
+    "A08": {
+      "count": 17,
+      "legend": 17,
+      "rgb": [
+        255,
+        218,
+        69
+      ]
+    },
+    "F01": {
+      "count": 17,
+      "legend": 17,
+      "rgb": [
+        253,
+        149,
+        123
+      ]
+    },
+    "E04": {
+      "count": 14,
+      "legend": 14,
+      "rgb": [
+        232,
+        100,
+        158
+      ]
+    },
+    "C14": {
+      "count": 13,
+      "legend": 13,
+      "rgb": [
+        213,
+        253,
+        255
+      ]
+    }
+  },
+  "pixel_size": [
+    39,
+    37
+  ],
+  "colours": 22,
+  "files": {
+    "sprite": "sprites/orange_fruit/orange_fruit_39x37.png",
+    "upscaled": "sprites/orange_fruit/orange_fruit_1014w.png",
+    "preview": "sprites/orange_fruit/preview_dark.png",
+    "scale": 26
+  }
+}

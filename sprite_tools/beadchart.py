@@ -50,6 +50,10 @@ def _axis_lines(profile, n=None):
     """
     n_px = len(profile)
     p = estimate_pitch(profile + 0.0, 0, n_px, min_pitch=6)
+    if n and n_px / p < n + 1:
+        # the pitch came out as a multiple of the cell (e.g. the thick lines every
+        # few cells win over blurred thin ones); n cells must fit in the image
+        p /= int(np.ceil((n + 1) * p / n_px))
     offs = np.arange(0, p, 0.1)
     k = np.arange(int(n_px / p) + 1)
     pos = offs[:, None] + p * k[None, :]

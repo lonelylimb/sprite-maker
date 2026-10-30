@@ -678,18 +678,35 @@ def _read_printed_codes(rgb, grid, fills, cells, lab, codes, beads, counts, roun
     return cur, renamed
 
 
-def _split_lookalikes(rgb, grid, fills, cells, lab, codes, beads, counts, tol=12, rounds=8):
-    """Sort the cells of beads whose official colours are near-identical (F16 and G02) by
-    their whole printed code: each code's print template is the mean of its cells' prints,
-    and cells move to the closest template until nothing changes. Kept only where it brings
-    the legend counts closer. Returns the new labels and (code, code, cells moved) per pair.
+def _split_lookalikes(rgb, grid, fills, cells, lab, codes, beads, counts, tol=16, rounds=8):
+    """Sort the cells of beads that print in near-identical colours (F16 and G02; on washed-out
+    charts the whites H02, H12 and H21) by their whole printed code: each code's print template
+    is the mean of its cells' prints, and cells move to the closest template until nothing
+    changes. Codes look alike when their official colours, or the median colours their cells
+    print in, are within tol. Kept only where it brings the legend counts closer.
+    Returns the new labels and a note per group changed.
     """
     n = len(codes)
-    near = [(a, b) for a in range(n) for b in range(a + 1, n) if np.abs(beads[a] - beads[b]).sum() <= tol]
+    printed = np.array([np.median(fills[lab == j], 0) if (lab == j).any() else beads[j] for j in range(n)])
+    group = list(range(n))
+
+    def root(j):
+        while group[j] != j:
+            j = group[j]
+        return j
+    for a in range(n):
+        for b in range(a + 1, n):
+            if min(np.abs(beads[a] - beads[b]).sum(), np.abs(printed[a] - printed[b]).sum()) <= tol:
+                group[root(b)] = root(a)
+    groups = {}
+    for j in range(n):
+        groups.setdefault(root(j), []).append(j)
     lab = lab.copy()
     notes = []
-    for a, b in near:
-        sel = np.where((lab == a) | (lab == b))[0]
+    for js in groups.values():
+        if len(js) < 2 or any(counts[j] is None for j in js):
+            continue
+        sel = np.where(np.isin(lab, js))[0]
         prints = {}
         for i in sel:
             r, c = cells[i]
@@ -702,27 +719,71 @@ def _split_lookalikes(rgb, grid, fills, cells, lab, codes, beads, counts, tol=12
         if len(idx) < 6:
             continue
         P = np.stack([prints[i] for i in idx])
+        F = fills[idx]
         cur = lab[idx].copy()
+        # cells move only from a code over its legend count to one under it, the cells whose
+        # print is most clearly closer to the other code's template first
         for _ in range(rounds):
-            if (cur == a).sum() < 2 or (cur == b).sum() < 2:
+            used = {j: int((lab == j).sum()) - int((lab[idx] == j).sum()) + int((cur == j).sum()) for j in js}
+            live = [j for j in js if (cur == j).sum() >= 2]
+            if len(live) < 2:
                 break
-            ta, tb = P[cur == a].mean(0), P[cur == b].mean(0)
-            new = np.where(((P - ta) ** 2).mean((1, 2)) <= ((P - tb) ** 2).mean((1, 2)), a, b)
-            if np.array_equal(new, cur):
+            # print and colour together: at ~5px 'H02' and 'H21' print alike, but their shades differ
+            pd = {j: ((P - P[cur == j].mean(0)) ** 2).mean((1, 2)) for j in live}
+            cd = {j: np.abs(F - np.median(F[cur == j], 0)).sum(1) for j in live}
+            ps = np.median(np.concatenate(list(pd.values()))) + 1e-9
+            cs = np.median(np.concatenate(list(cd.values()))) + 1e-9
+            dist = {j: pd[j] / ps + cd[j] / cs for j in live}
+            done = set()
+
+            def best(j, k):
+                # the unmoved cell of j whose print is most clearly closer to k's template
+                gain = np.where((cur == j) & ~np.isin(np.arange(len(idx)), list(done)),
+                                dist[j] - dist[k] if j in dist and k in dist else -np.inf, -np.inf)
+                a = int(gain.argmax())
+                return gain[a], a
+            changed = False
+            while True:
+                # direct moves (j -> k), or chains through a code at its count (j -> m -> k)
+                options = []
+                for j in live:
+                    if used[j] <= counts[j]:
+                        continue
+                    for k in live:
+                        if k == j or used[k] >= counts[k]:
+                            continue
+                        g, a = best(j, k)
+                        options.append((g, [(a, k)]))
+                        for m in live:
+                            if m in (j, k):
+                                continue
+                            g1, a1 = best(j, m)
+                            g2, a2 = best(m, k)
+                            options.append((g1 + g2, [(a1, m), (a2, k)]))
+                if not options:
+                    break
+                g, steps = max(options, key=lambda o: o[0])
+                if not g > 0:
+                    break
+                for a, k in steps:
+                    used[cur[a]] -= 1
+                    used[k] += 1
+                    cur[a] = k
+                    done.add(a)
+                changed = True
+            if not changed:
                 break
-            cur = new
-        if None in (counts[a], counts[b]):
-            continue
-        before = abs(int((lab == a).sum()) - counts[a]) + abs(int((lab == b).sum()) - counts[b])
+
+        def error(labels):
+            return sum(abs(int((labels == j).sum()) - counts[j]) for j in js)
         trial = lab.copy()
         trial[idx] = cur
-        after = abs(int((trial == a).sum()) - counts[a]) + abs(int((trial == b).sum()) - counts[b])
         moved = int((trial != lab).sum())
-        if moved and after < before:
+        if moved and error(trial) < error(lab):
             lab = trial
-            notes.append(f"{codes[a]} and {codes[b]} print in the same colour; {moved} cells sorted between "
-                         f"them by their printed code ({codes[a]} {int((lab == a).sum())}, "
-                         f"{codes[b]} {int((lab == b).sum())})")
+            names = " and ".join(codes[j] for j in js)
+            notes.append(f"{names} print in near-identical colours; {moved} cells sorted between them by "
+                         f"their printed code ({', '.join(f'{codes[j]} {int((lab == j).sum())}' for j in js)})")
     return lab, notes
 
 

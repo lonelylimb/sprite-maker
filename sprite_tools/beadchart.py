@@ -41,15 +41,17 @@ def _line_profiles(lum):
     return v.sum(0).astype(float), h.sum(1).astype(float)
 
 
-def _axis_lines(profile, n=None):
+def _axis_lines(profile, n=None, pitch=None):
     """(first line position, pitch, cell count) of the grid along one axis.
+
+    pitch overrides the estimated cell size (e.g. taken from the other axis).
 
     Without n: the longest run of evenly spaced strong lines (a single faint line
     inside a run does not break it). With n: the window of n cells
     whose boundary lines are strongest overall.
     """
     n_px = len(profile)
-    p = estimate_pitch(profile + 0.0, 0, n_px, min_pitch=6)
+    p = pitch or estimate_pitch(profile + 0.0, 0, n_px, min_pitch=6)
     offs = np.arange(0, p, 0.1)
     k = np.arange(int(n_px / p) + 1)
     pos = offs[:, None] + p * k[None, :]
@@ -61,7 +63,11 @@ def _axis_lines(profile, n=None):
     if n:
         if len(pos) < n + 1:
             raise ChartError(f"found only {len(pos) - 1} cells along an axis, expected {n}")
-        a = int(np.argmax([strength[i:i + n + 1].sum() for i in range(len(pos) - n)]))
+        sums = np.array([strength[i:i + n + 1].sum() for i in range(len(pos) - n)])
+        # number headers on both sides add strong lines just outside the art, so
+        # windows shifted by a cell can tie; the art sits between them
+        ties = np.flatnonzero(sums >= 0.99 * sums.max())
+        a = int(ties[len(ties) // 2]) if ties[-1] - ties[0] == len(ties) - 1 else int(sums.argmax())
     else:
         strong = strength > 0.35 * np.median(np.sort(strength)[-max(3, len(strength) // 2):])
         # bridge a single faint line only deep inside a run, so the grid never
@@ -306,8 +312,17 @@ def _split_merged(labels, masks, colours, widths, counts):
 def _read_cells(rgb, cells):
     """Grid of the chart and per cell: fill colour, code mask, darkest print, watermark-yellow share."""
     vx, hy = _line_profiles(rgb.mean(2))
-    ox, px, nx = _axis_lines(vx, cells and cells[0])
-    oy, py, ny = _axis_lines(hy, cells and cells[1])
+    try:
+        ox, px, nx = _axis_lines(vx, cells and cells[0])
+    except ChartError:
+        # printed codes can fake a periodicity across a row; cells are about square
+        oy, py, ny = _axis_lines(hy, cells and cells[1])
+        ox, px, nx = _axis_lines(vx, cells and cells[0], py)
+    else:
+        try:
+            oy, py, ny = _axis_lines(hy, cells and cells[1])
+        except ChartError:
+            oy, py, ny = _axis_lines(hy, cells and cells[1], px)
     grid = Grid(ox, px, nx, oy, py, ny)
     inset = max(2, int(round(min(px, py) * 0.13)))
 
@@ -444,9 +459,10 @@ def _match_clusters(C, sizes, beads, counts, rounds=6):
     return pairs
 
 
-def _paper(fills):
-    """Blank paper: light and neutral (cells crossed by a thick grid line come out light grey)."""
-    return (fills.min(2) > 200) & (np.ptp(fills, 2) < 14)
+def _paper(fills, dark):
+    """Blank paper: light and neutral (cells crossed by a thick grid line come out light grey),
+    with no crisp printed code (some charts print the code on white beads)."""
+    return (fills.min(2) > 200) & (np.ptp(fills, 2) < 14) & (dark > 160)
 
 
 _GH, _GW = 6, 4  # a printed character, resampled: rows x (columns + 1 gap column)
@@ -540,16 +556,27 @@ def _read_printed_codes(rgb, grid, fills, cells, lab, codes, beads, counts, roun
             if len(glyphs[i]) == len(p):
                 for pos, ch in enumerate(p):
                     per.setdefault(ch, {}).setdefault(cur[i], []).append(glyphs[i][pos])
-        ref = {ch: np.median([np.median(v, 0) for v in byc.values()], 0) for ch, byc in per.items()}
-        # text cost of every cell against every code
-        cost = np.full((len(idx), n), 5.0)
-        for a, i in enumerate(idx):
-            g = glyphs[i]
-            for j, p in enumerate(printed):
-                if len(p) == len(g):
-                    cost[a, j] = np.mean([((g[pos] - ref[ch]) ** 2).mean() * 10 if ch in ref else 2
-                                          for pos, ch in enumerate(p)])
+        gmed = {ch: {j: np.median(v, 0) for j, v in byc.items()} for ch, byc in per.items()}
+        ref = {ch: np.median(list(byj.values()), 0) for ch, byj in gmed.items()}
+
+        def text_cost(refs_of):
+            # text cost of every cell against every code; refs_of(i) gives the references for cell i
+            cost = np.full((len(idx), n), 5.0)
+            for a, i in enumerate(idx):
+                g, rf = glyphs[i], refs_of(i)
+                for j, p in enumerate(printed):
+                    if len(p) == len(g):
+                        cost[a, j] = np.mean([((g[pos] - rf[ch]) ** 2).mean() * 10 if ch in rf else 2
+                                              for pos, ch in enumerate(p)])
+            return cost
+
+        cost = text_cost(lambda i: ref)
         reading = cost.argmin(1)
+        # a misnamed group teaches its own wrong shapes (the '6' of a group of F14 prints
+        # labelled F16 looks like a '4'), so groups are judged on the other groups' references
+        others = {j: {ch: np.median([v for k, v in byj.items() if k != j], 0)
+                      for ch, byj in gmed.items() if set(byj) - {j}} for j in np.unique(cur)}
+        group_reading = text_cost(lambda i: others[cur[i]]).argmin(1)
         new = cur.copy()
         # whole groups first: colour clusters paired with the wrong code. Where the legend
         # gives counts, a rename must not take them further from the legend (a code printed
@@ -559,7 +586,7 @@ def _read_printed_codes(rgb, grid, fills, cells, lab, codes, beads, counts, roun
             here = cur[idx] == j
             if here.sum() < 3:
                 continue
-            votes = np.bincount(reading[here], minlength=n)
+            votes = np.bincount(group_reading[here], minlength=n)
             k = int(votes.argmax())
             if k != j and votes[k] >= 0.5 * here.sum():
                 moves.append((votes[k] / here.sum(), j, k))
@@ -574,6 +601,10 @@ def _read_printed_codes(rgb, grid, fills, cells, lab, codes, beads, counts, roun
                     break
             else:
                 break
+        if not np.array_equal(new, cur):
+            # renamed groups change the references; read single cells against the new ones
+            cur = new
+            continue
         # then single cells, to codes their colour does not rule out; a code with
         # no cells yet gets the printed shade its official colour maps to on this chart
         # (from the cells that also read as the code, so stray cells such as header numbers
@@ -614,6 +645,54 @@ def _read_printed_codes(rgb, grid, fills, cells, lab, codes, beads, counts, roun
     return cur, renamed
 
 
+def _split_lookalikes(rgb, grid, fills, cells, lab, codes, beads, counts, tol=12, rounds=8):
+    """Sort the cells of beads whose official colours are near-identical (F16 and G02) by
+    their whole printed code: each code's print template is the mean of its cells' prints,
+    and cells move to the closest template until nothing changes. Kept only where it brings
+    the legend counts closer. Returns the new labels and (code, code, cells moved) per pair.
+    """
+    n = len(codes)
+    near = [(a, b) for a in range(n) for b in range(a + 1, n) if np.abs(beads[a] - beads[b]).sum() <= tol]
+    lab = lab.copy()
+    notes = []
+    for a, b in near:
+        sel = np.where((lab == a) | (lab == b))[0]
+        prints = {}
+        for i in sel:
+            r, c = cells[i]
+            l, t, rr, bt = grid.cell_box(c, r)
+            cr = _code_crop(rgb[t + 1:bt - 1, l + 1:rr - 1].astype(float), fills[i])
+            if cr is not None:
+                im = Image.fromarray((cr * 255).astype(np.uint8)).resize((18, 8), Image.BILINEAR)
+                prints[i] = np.asarray(im) / 255.0
+        idx = np.array(sorted(prints))
+        if len(idx) < 6:
+            continue
+        P = np.stack([prints[i] for i in idx])
+        cur = lab[idx].copy()
+        for _ in range(rounds):
+            if (cur == a).sum() < 2 or (cur == b).sum() < 2:
+                break
+            ta, tb = P[cur == a].mean(0), P[cur == b].mean(0)
+            new = np.where(((P - ta) ** 2).mean((1, 2)) <= ((P - tb) ** 2).mean((1, 2)), a, b)
+            if np.array_equal(new, cur):
+                break
+            cur = new
+        if None in (counts[a], counts[b]):
+            continue
+        before = abs(int((lab == a).sum()) - counts[a]) + abs(int((lab == b).sum()) - counts[b])
+        trial = lab.copy()
+        trial[idx] = cur
+        after = abs(int((trial == a).sum()) - counts[a]) + abs(int((trial == b).sum()) - counts[b])
+        moved = int((trial != lab).sum())
+        if moved and after < before:
+            lab = trial
+            notes.append(f"{codes[a]} and {codes[b]} print in the same colour; {moved} cells sorted between "
+                         f"them by their printed code ({codes[a]} {int((lab == a).sum())}, "
+                         f"{codes[b]} {int((lab == b).sum())})")
+    return lab, notes
+
+
 def read_chart_codes(rgba, cells, codes, counts, beads, background=()):
     """Read a chart whose legend codes (and counts) are given; skips legend detection and OCR.
 
@@ -624,7 +703,7 @@ def read_chart_codes(rgba, cells, codes, counts, beads, background=()):
     rgb = rgba[..., :3]
     grid, fills, masks, dark, yellow = _read_cells(rgb, cells)
     n = len(codes)
-    paper = _paper(fills)
+    paper = _paper(fills, dark)
     # white beads print as blank paper: the blank cells enclosed by the art are one more printed colour
     cc, sizes = components(~paper)
     main = cc == int(np.argmax(sizes)) + 1 if len(sizes) else ~paper
@@ -685,7 +764,9 @@ def read_chart_codes(rgba, cells, codes, counts, beads, background=()):
     if lone:
         notes.append(f"printed codes: {len(lone)} more cells relabelled by their print and colour")
     relabel_idx = set(relabel_idx) | set(lone)
-    lab = read
+    lab, split_notes = _split_lookalikes(rgb, grid, X, rc, read, codes, beads, counts)
+    notes += split_notes
+    relabel_idx |= set(np.where(lab != read)[0])
     relabel_idx = sorted(j for j in relabel_idx if to_bead[first[j]] != lab[j])
     if holes.any():
         hl = lab[holes[use]]

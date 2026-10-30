@@ -309,6 +309,36 @@ def _split_merged(labels, masks, colours, widths, counts):
     return notes
 
 
+def _off_headers(rgb, grid, tries=2):
+    """Shift a grid of stated size off a number header it landed on: an outer row or column
+    whose cells all share one fill and all carry print (the art's bottom border can print
+    fainter than the header's, so line strength alone picks the header)."""
+    inset = max(2, int(round(min(grid.px, grid.py) * 0.13)))
+    size = (int(grid.py) - 2 * inset, int(grid.px) - 2 * inset)
+
+    def header(boxes):
+        f, d = [], []
+        for box in boxes:
+            fill, _, dark, _ = _read_cell(rgb, box, inset, size)
+            f.append(fill)
+            d.append(dark)
+        f = np.array(f)
+        return bool(np.abs(f - np.median(f, 0)).sum(1).max() < 25 and np.mean(np.array(d) < 170) > 0.9)
+
+    g = grid
+    for _ in range(tries):
+        top = header([g.cell_box(c, 0) for c in range(g.nx)])
+        bot = header([g.cell_box(c, g.ny - 1) for c in range(g.nx)])
+        left = header([g.cell_box(0, r) for r in range(g.ny)])
+        right = header([g.cell_box(g.nx - 1, r) for r in range(g.ny)])
+        dx = int(left and not right) - int(right and not left)
+        dy = int(top and not bot) - int(bot and not top)
+        if not dx and not dy:
+            break
+        g = Grid(g.x0 + dx * g.px, g.px, g.nx, g.y0 + dy * g.py, g.py, g.ny)
+    return g
+
+
 def _read_cells(rgb, cells):
     """Grid of the chart and per cell: fill colour, code mask, darkest print, watermark-yellow share."""
     vx, hy = _line_profiles(rgb.mean(2))
@@ -324,6 +354,9 @@ def _read_cells(rgb, cells):
         except ChartError:
             oy, py, ny = _axis_lines(hy, cells and cells[1], px)
     grid = Grid(ox, px, nx, oy, py, ny)
+    if cells:
+        grid = _off_headers(rgb, grid)
+        ox, oy = grid.x0, grid.y0
     inset = max(2, int(round(min(px, py) * 0.13)))
 
     size = (int(py) - 2 * inset, int(px) - 2 * inset)

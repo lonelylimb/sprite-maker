@@ -49,20 +49,34 @@ def _axis_lines(profile, n=None):
     whose boundary lines are strongest overall.
     """
     n_px = len(profile)
-    p = estimate_pitch(profile + 0.0, 0, n_px, min_pitch=6)
-    offs = np.arange(0, p, 0.1)
-    k = np.arange(int(n_px / p) + 1)
-    pos = offs[:, None] + p * k[None, :]
-    score = np.interp(pos, np.arange(n_px), profile, left=0, right=0).sum(1)
-    o = offs[score.argmax()]
-    pos = o + p * k
-    pos = pos[pos < n_px - 1]
-    strength = np.array([profile[max(0, int(x) - 1):int(x) + 2].max() for x in pos])
+    p0 = estimate_pitch(profile + 0.0, 0, n_px, min_pitch=6)
+
+    def lines(p):
+        offs = np.arange(0, p, 0.1)
+        k = np.arange(int(n_px / p) + 1)
+        score = np.interp(offs[:, None] + p * k[None, :], np.arange(n_px), profile, left=0, right=0).sum(1)
+        pos = offs[score.argmax()] + p * k
+        pos = pos[pos < n_px - 1]
+        return pos, np.array([profile[max(0, int(x) - 1):int(x) + 2].max() for x in pos])
+
     if n:
-        if len(pos) < n + 1:
-            raise ChartError(f"found only {len(pos) - 1} cells along an axis, expected {n}")
-        a = int(np.argmax([strength[i:i + n + 1].sum() for i in range(len(pos) - n)]))
+        # a row of printed codes can look like a grid line halfway through each cell, halving
+        # the pitch: try multiples and keep the one whose n cells have the strongest lines
+        best = None
+        for m in (1, 2, 3):
+            pos, strength = lines(p0 * m)
+            if len(pos) < n + 1:
+                continue
+            a = int(np.argmax([strength[i:i + n + 1].sum() for i in range(len(pos) - n)]))
+            med = np.median(strength[a:a + n + 1])
+            if best is None or med > 1.5 * best[0]:
+                best = (med, p0 * m, pos, a)
+        if best is None:
+            raise ChartError(f"found only {len(lines(p0)[0]) - 1} cells along an axis, expected {n}")
+        _, p, pos, a = best
     else:
+        p = p0
+        pos, strength = lines(p)
         strong = strength > 0.35 * np.median(np.sort(strength)[-max(3, len(strength) // 2):])
         # bridge a single faint line only deep inside a run, so the grid never
         # grows into legend boxes that happen to line up with it

@@ -8,7 +8,7 @@ from PIL import Image
 
 from . import ocr
 from .export import components, outside_background
-from .grid import Grid, estimate_pitch, refine_axis
+from .grid import Grid, _boundary_score, estimate_pitch, refine_axis
 from .palette import apply_affine, cluster_colours, fit_affine, match_to_legend, nearest
 
 
@@ -303,12 +303,189 @@ def _split_merged(labels, masks, colours, widths, counts):
     return notes
 
 
-def _read_cells(rgb, cells):
-    """Grid of the chart and per cell: fill colour, code mask, darkest print, watermark-yellow share."""
-    vx, hy = _line_profiles(rgb.mean(2))
-    ox, px, nx = _axis_lines(vx, cells and cells[0])
-    oy, py, ny = _axis_lines(hy, cells and cells[1])
-    grid = Grid(ox, px, nx, oy, py, ny)
+def _long_runs(m, n):
+    """Pixels of m that lie in a vertical run of at least n True pixels."""
+    up = np.zeros(m.shape, np.int32)
+    dn = np.zeros(m.shape, np.int32)
+    up[0], dn[-1] = m[0], m[-1]
+    for i in range(1, len(m)):
+        up[i] = (up[i - 1] + 1) * m[i]
+    for i in range(len(m) - 2, -1, -1):
+        dn[i] = (dn[i + 1] + 1) * m[i]
+    return up + dn - 1 >= n
+
+
+def _text_profiles(lum, thr=130, line=40):
+    """Column / row counts of printed-text pixels: dark pixels that are not part of a long grid line."""
+    dk = lum < thr
+    txt = dk & ~_long_runs(dk, line) & ~_long_runs(dk.T, line).T
+    return txt.sum(0).astype(float), txt.sum(1).astype(float)
+
+
+def _text_lattice(text, n, lo=0.4):
+    """(pitch, phase of the cell boundaries) from the printed codes, which sit centred in their cells.
+
+    The code text repeats once per cell, so its strongest period between lo * L / n and
+    L / n (the stated grid spans most of the image) is the cell size, and the text's
+    mean position within that period is the cell centre.
+    """
+    L = len(text)
+    if text.sum() == 0:
+        return None
+    x = np.arange(L)
+    best = None
+    for p in np.arange(max(6.0, lo * L / n), (L - 2) / n, 0.01):
+        z = (text * np.exp(2j * np.pi * x / p)).sum()
+        if best is None or abs(z) > best[0]:
+            best = (abs(z), p, np.angle(z))
+    if best is None:
+        return None
+    _, p, ang = best
+    return p, (ang / (2 * np.pi) * p - p / 2) % p
+
+
+def _refine_near(prof, o, n, p, spread=0.005):
+    """Fine-tune (offset, pitch) of n cells near o: offsets only within a sixth of a cell, so a
+    faint grid cannot be pulled half a cell over onto text or a checkered background."""
+    best = (-1, o, p)
+    for q in np.arange(p * (1 - spread), p * (1 + spread), 0.002):
+        offs = np.arange(o - p / 6, o + p / 6, 0.1)
+        sc = _boundary_score(prof, offs, q, n)
+        i = int(sc.argmax())
+        if sc[i] > best[0]:
+            best = (sc[i], offs[i] + 0.5, q)
+    return best[1], best[2]
+
+
+def _snap_to_lines(prof, o, p, n, frac=0.2):
+    """(offset, pitch) fitted to the strong lines (frame, thick every-5/10 lines) near the lattice.
+
+    Faint grid lines barely move a boundary score, but the strong lines that box a chart
+    in sit exactly on cell boundaries; a least-squares fit to them pins the grid down.
+    Unchanged when fewer than two of them line up with it.
+    """
+    s = prof + np.r_[prof[1:], 0]
+    thr = frac * s.max()
+    ks, xs = [], []
+    for i in range(1, len(s) - 1):
+        if s[i] >= thr and s[i] >= s[i - 1] and s[i] > s[i + 1]:
+            w = prof[i:i + 2]
+            x = i + w[1] / max(w.sum(), 1e-9) + 0.5   # centre of a line one or two pixels wide
+            k = int(round((x - o) / p))
+            if 0 <= k <= n and abs(x - o - k * p) < p / 6:
+                ks.append(k)
+                xs.append(x)
+    if len(set(ks)) < 2:
+        return o, p
+    p2, o2 = np.polyfit(ks, xs, 1)
+    return (o2, p2) if abs(p2 / p - 1) < 0.01 else (o, p)
+
+
+def _integral(m):
+    return np.pad(m.astype(np.int64).cumsum(0).cumsum(1), ((1, 0), (1, 0)))
+
+
+def _art_count(sums, ox, px, nx, oy, py, ny):
+    """Cells that are not blank paper, for a candidate grid (cheap, from integral images).
+
+    sums = integral images of (coloured pixels, dark pixels). A cell counts if it is
+    mostly coloured or carries dark print (white beads print as paper with a code).
+    """
+    col, dk = sums
+    ins = max(2, int(round(min(px, py) * 0.13)))
+    xs = np.rint(ox + px * np.arange(nx + 1)).astype(int).clip(0, col.shape[1] - 1)
+    ys = np.rint(oy + py * np.arange(ny + 1)).astype(int).clip(0, col.shape[0] - 1)
+    l, r, t, b = xs[:-1] + ins, xs[1:] - ins, ys[:-1] + ins, ys[1:] - ins
+    r, b = np.maximum(r, l + 1), np.maximum(b, t + 1)
+
+    def box(S):
+        return S[b[:, None], r[None]] - S[t[:, None], r[None]] - S[b[:, None], l[None]] + S[t[:, None], l[None]]
+    area = (b - t)[:, None] * (r - l)[None]
+    return int(((box(col) / area > 0.5) | (box(dk) / area > 0.03)).sum())
+
+
+def _fit_grid(rgb, cells, total=None):
+    """Grid of a chart whose size is stated: line detection, checked against the printed codes.
+
+    Thin grid lines can be too faint to find (light lines on a checkered background) or
+    drowned out by text, so the line-based grid is compared with the lattice the printed
+    codes form. With total (legend bead count), the candidate whose count of non-blank
+    cells is closest to it wins. Returns (grid, notes).
+    """
+    lum = rgb.mean(2)
+    vx, hy = _line_profiles(lum)
+    tx, ty = _text_profiles(lum)
+    axes = []
+    for prof, text, n in ((vx, tx, cells[0]), (hy, ty, cells[1])):
+        cands, err = [], None
+        try:
+            cands.append(_axis_lines(prof, n) + ("lines",))
+        except ChartError as e:
+            err = str(e)
+        lat = _text_lattice(text, n)
+        if lat:
+            p, phase = lat
+            d = np.maximum(prof, np.r_[prof[1:], 0])
+            wins = []
+            for k in range(-1, int(len(prof) / p) + 1):
+                o = phase + k * p
+                if o >= -0.5 and o + n * p <= len(prof):
+                    o2, p2 = _snap_to_lines(prof, *_refine_near(prof, o, n, p), n)
+                    edges = d[int(min(max(o2, 0), len(d) - 1))] + d[int(min(o2 + n * p2, len(d) - 1))]
+                    wins.append((edges, (o2, p2, n, "codes")))
+                    # the codes' own phase too: faint lines can pull the refined one a little off
+                    wins.append((edges - 1e-6, _snap_to_lines(prof, o, p, n) + (n, "codes")))
+            # strongest frame lines first: charts box the grid in
+            cands += [c for _, c in sorted(wins, key=lambda w: -w[0])]
+        if not cands:
+            raise ChartError(err or "no grid found")
+        axes.append(cands)
+    cx, cy = axes
+    notes = []
+    if total:
+        lc = (lum > 200) & (np.ptp(rgb, 2) < 14)
+        dk = lum < 130
+        sums = (_integral(~lc & ~dk), _integral(dk))
+        scored = [(abs(_art_count(sums, ox, px, cells[0], oy, py, cells[1]) - total), i + j, a, b)
+                  for i, a in enumerate(cx) for j, b in enumerate(cy)
+                  for (ox, px, _, _), (oy, py, _, _) in [(a, b)]]
+        e, _, (ox, px, _, sx), (oy, py, _, sy) = min(scored, key=lambda s: s[:2])
+        if e > 0.05 * total:
+            notes.append(f"WARNING: the best grid found has {e} more or fewer non-blank cells than the legend total "
+                         f"{total}; check the grid and pass --grid X0,PX,Y0,PY if it is wrong")
+    else:
+        def pick(cands):
+            # trust the lines unless the codes' lattice has a clearly different cell size, or puts
+            # the codes off-centre (the lines found were text or a checkered background)
+            if cands[0][3] != "lines" or len(cands) == 1:
+                return cands[0]
+            (lo, lp, _, _), (co, cp, _, _) = cands[0], cands[1]
+            off = (lo - co) % lp
+            if abs(cp / lp - 1) < 0.01 and min(off, lp - off) < lp / 4:
+                return cands[0]
+            return cands[1]
+        (ox, px, _, sx), (oy, py, _, sy) = pick(cx), pick(cy)
+    if "codes" in (sx, sy):
+        found = [f"{c[1]:.2f}px" for c in (cx[0], cy[0]) if c[3] == "lines"]
+        notes.append(f"grid taken from the printed codes ({px:.2f} x {py:.2f}px cells"
+                     + (f"; grid lines suggested {' x '.join(found)}" if found else "") + ")")
+    return Grid(ox, px, cells[0], oy, py, cells[1]), notes
+
+
+def _read_cells(rgb, cells, grid=None, total=None):
+    """Grid of the chart and per cell: fill colour, code mask, darkest print, watermark-yellow share.
+
+    grid: a Grid given by hand (--grid). total: legend bead count, used to check the grid.
+    """
+    notes = []
+    if grid is None and cells:
+        grid, notes = _fit_grid(rgb, cells, total)
+    elif grid is None:
+        vx, hy = _line_profiles(rgb.mean(2))
+        ox, px, nx = _axis_lines(vx)
+        oy, py, ny = _axis_lines(hy)
+        grid = Grid(ox, px, nx, oy, py, ny)
+    ox, px, nx, oy, py, ny = grid.x0, grid.px, grid.nx, grid.y0, grid.py, grid.ny
     inset = max(2, int(round(min(px, py) * 0.13)))
 
     size = (int(py) - 2 * inset, int(px) - 2 * inset)
@@ -319,16 +496,17 @@ def _read_cells(rgb, cells):
     for r in range(ny):
         for c in range(nx):
             fills[r, c], masks[r, c], dark[r, c], yellow[r, c] = _read_cell(rgb, grid.cell_box(c, r), inset, size)
-    return grid, fills, masks, dark, yellow
+    return grid, fills, masks, dark, yellow, notes
 
 
-def read_chart(rgba, cells=None):
-    """Read a chart. cells=(nx, ny) fixes the grid size when the chart states it."""
+def read_chart(rgba, cells=None, grid=None):
+    """Read a chart. cells=(nx, ny) fixes the grid size when the chart states it; grid gives it by hand."""
     rgb = rgba[..., :3]
-    grid, fills, masks, dark, yellow = _read_cells(rgb, cells)
+    given = grid is not None
+    grid, fills, masks, dark, yellow, grid_notes = _read_cells(rgb, cells, grid)
     ox, px, nx, oy, py, ny = grid.x0, grid.px, grid.nx, grid.y0, grid.py, grid.ny
 
-    if not cells:
+    if not cells and not given:
         # drop number headers: an outer row/column whose cells are all the same non-white grey
         def uniform(v):
             return np.abs(v - np.median(v, 0)).sum(1).max() < 25 and v.min() < 235
@@ -346,7 +524,7 @@ def read_chart(rgba, cells=None):
         dark, yellow = dark[r0:r1, c0:c1], yellow[r0:r1, c0:c1]
         grid = Grid(ox + px * c0, px, c1 - c0, oy + py * r0, py, r1 - r0)
 
-    notes = []
+    notes = list(grid_notes)
     blank = np.abs(fills - 255).sum(2) < 30
     faded = blank.mean() < 0.05
     light = None
@@ -614,21 +792,36 @@ def _read_printed_codes(rgb, grid, fills, cells, lab, codes, beads, counts, roun
     return cur, renamed
 
 
-def read_chart_codes(rgba, cells, codes, counts, beads, background=()):
+def read_chart_codes(rgba, cells, codes, counts, beads, background=(), grid=None):
     """Read a chart whose legend codes (and counts) are given; skips legend detection and OCR.
 
     beads are the official colours of codes; the returned Chart's colours are those, so
     the sprite uses true bead colours. background lists legend indices of beads that
-    fill the chart's background (transparent).
+    fill the chart's background (transparent). grid gives the grid by hand.
     """
     rgb = rgba[..., :3]
-    grid, fills, masks, dark, yellow = _read_cells(rgb, cells)
+    # the legend total is the number of non-blank cells, which checks the grid (not when a bead fills the background)
+    total = sum(counts) if None not in counts and not background else None
+    grid, fills, masks, dark, yellow, grid_notes = _read_cells(rgb, cells, grid, total)
     n = len(codes)
     paper = _paper(fills)
     # white beads print as blank paper: the blank cells enclosed by the art are one more printed colour
     cc, sizes = components(~paper)
     main = cc == int(np.argmax(sizes)) + 1 if len(sizes) else ~paper
     holes = paper & ~outside_background(~main)
+    # white beads on the outside of the art print as paper too, with a dark code: grow the art into
+    # the blank cells that carry print and touch it (number headers and watermarks do neither)
+    inked = paper & (dark < 120) & ~holes
+    edge = np.zeros_like(paper)
+    grown = ~paper | holes
+    while True:
+        g = np.pad(grown, 1)
+        add = inked & ~grown & (g[:-2, 1:-1] | g[2:, 1:-1] | g[1:-1, :-2] | g[1:-1, 2:])
+        if not add.any():
+            break
+        grown |= add
+        edge |= add
+    holes = holes | edge
     use = ~paper | holes
     X = fills[use]
     # fine clusters: chart apps can print two beads only a few RGB steps apart
@@ -645,7 +838,7 @@ def read_chart_codes(rgba, cells, codes, counts, beads, background=()):
     sizes = np.bincount(lab, minlength=len(C)).astype(float)
     C = np.array([np.median(X[lab == k], 0) if sizes[k] else C[k] for k in range(len(C))])
     pairs = _match_clusters(C, sizes, beads, counts)
-    notes = []
+    notes = list(grid_notes)
     missing = [codes[j] for j in range(n) if j not in pairs]
     if missing:
         notes.append(f"no printed colour found for {', '.join(missing)}")
@@ -690,7 +883,8 @@ def read_chart_codes(rgba, cells, codes, counts, beads, background=()):
     if holes.any():
         hl = lab[holes[use]]
         names = ", ".join(f"{codes[k]} x{int((hl == k).sum())}" for k in np.unique(hl))
-        notes.append(f"{int(holes.sum())} blank cells enclosed by the art read as white beads ({names})")
+        notes.append(f"{int(holes.sum())} blank cells read as white beads ({names}): "
+                     f"{int((holes & ~edge).sum())} enclosed by the art, {int(edge.sum())} on its edge with a printed code")
 
     labels = np.full(paper.shape, -1)
     labels[use] = lab

@@ -114,6 +114,15 @@ def remove_strays(rgba, bg=None, tol=60):
         cleared += int(stray.sum())
 
 
+def cell_codes(rgba, beads):
+    """Rows of space-separated bead codes per pixel ('.' transparent); beads maps code -> {"rgb": ...}."""
+    by_rgb = {}
+    for code, b in beads.items():
+        by_rgb.setdefault(tuple(int(v) for v in b["rgb"]), code)
+    return [" ".join(by_rgb.get(tuple(int(v) for v in px[:3]), "?") if px[3] else "." for px in row)
+            for row in rgba]
+
+
 def trim(rgba):
     ys, xs = np.where(rgba[..., 3] > 0)
     return rgba[ys.min():ys.max() + 1, xs.min():xs.max() + 1]

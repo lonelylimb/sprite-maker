@@ -123,9 +123,13 @@ def _code_notes(ch, colours, sprite):
     return notes
 
 
-def from_chart(rgba, colour_source, cells=None, legend=None):
-    """legend: (codes, counts, official colours, background bead indices) read off the chart by hand."""
-    ch = beadchart.read_chart_codes(rgba, cells, *legend) if legend else beadchart.read_chart(rgba, cells)
+def from_chart(rgba, colour_source, cells=None, legend=None, grid=None):
+    """legend: (codes, counts, official colours, background bead indices) read off the chart by hand.
+    grid: Grid given by hand (--grid)."""
+    if legend:
+        ch = beadchart.read_chart_codes(rgba, cells, *legend, grid=grid)
+    else:
+        ch = beadchart.read_chart(rgba, cells, grid)
     art = ch.labels >= 0
     labels = ch.labels.copy()
     colours = ch.colours.copy()
@@ -186,7 +190,8 @@ def from_chart(rgba, colour_source, cells=None, legend=None):
     out[art, :3] = colours[lab[art]].round()
     out[art, 3] = 255
     report = {"mode": "chart", "chart_grid": vars(ch.grid), "faded_chart": bool(ch.faded),
-              "legend_entries": len(ch.swatches), "legend_counts": ch.counts, "notes": notes}
+              "legend_entries": len(ch.swatches), "legend_counts": ch.counts, "notes": notes,
+              "_origin": (int(y0), int(x0))}
     if legend:
         report["_chart"] = (ch, colours)  # colours as written to the sprite (a colour source replaces them)
     return out, report
@@ -199,6 +204,8 @@ def main(argv=None):
     ap.add_argument("--colour-source", "--color-source", help="clean image of the same art to take colours from (chart mode)")
     ap.add_argument("--mode", choices=["auto", "chart", "image"], default="auto")
     ap.add_argument("--cells", help="chart grid size as WxH when the chart states it, e.g. 52x52")
+    ap.add_argument("--grid", help="chart grid by hand as X0,PX,Y0,PY: left and top edge of the first cell and the "
+                    "cell width and height, in image pixels (needs --cells); for charts whose grid is not found")
     ap.add_argument("--legend", help="chart legend as read off the image, in any order: codes with optional counts, "
                     "e.g. 'A06:132 A10:204 H02:191'; skips legend detection and OCR and uses official bead colours")
     ap.add_argument("--brand", default="MARD", choices=beads.BRANDS, help="bead range of the --legend codes")
@@ -229,7 +236,7 @@ def main(argv=None):
             raise SystemExit(str(e))
         legend = (codes, counts, colours, bgk)
     mode = a.mode
-    if mode == "auto" and (legend or a.cells):
+    if mode == "auto" and (legend or a.cells or a.grid):
         mode = "chart"
     if mode == "auto":
         # charts are mostly white paper; anything else is read as a plain image
@@ -238,7 +245,16 @@ def main(argv=None):
     if mode == "chart":
         try:
             cells = tuple(int(v) for v in a.cells.lower().split("x")) if a.cells else None
-            out, report = from_chart(rgba, a.colour_source, cells, legend)
+            grid = None
+            if a.grid:
+                try:
+                    x0, px, y0, py = (float(v) for v in a.grid.split(","))
+                except ValueError:
+                    raise SystemExit("--grid takes X0,PX,Y0,PY, e.g. --grid 26.4,26.79,102.5,26.8")
+                if not cells:
+                    raise SystemExit("--grid needs --cells WxH")
+                grid = gridmod.Grid(x0, px, cells[0], y0, py, cells[1])
+            out, report = from_chart(rgba, a.colour_source, cells, legend, grid)
         except beadchart.ChartError as e:
             if a.mode == "chart":
                 raise SystemExit(f"could not read chart: {e}")
@@ -263,6 +279,9 @@ def main(argv=None):
     cleared = export.remove_strays(out, np.array(bg) if bg else None, a.bg_tol * 1.5)
     if cleared:
         report["notes"].append(f"removed {cleared} stray edge pixels")
+    ys, xs = np.where(out[..., 3] > 0)
+    oy, ox = report.pop("_origin", (0, 0))
+    origin = (oy + int(ys.min()), ox + int(xs.min()))  # chart cell (0-based) of the sprite's top-left pixel
     out = export.trim(out)
     if "_chart" in report:
         ch, colours = report.pop("_chart")
@@ -270,6 +289,9 @@ def main(argv=None):
         used, _ = _bead_counts(colours, out)
         report["beads"] = {c: {"count": u, "legend": n, "rgb": [int(round(v)) for v in colours[k]]}
                            for k, (c, u, n) in enumerate(zip(ch.codes, used, ch.counts)) if k not in ch.background}
+        # every cell's code, so hand fixes can be applied by chart row and column (python -m sprite_tools.fix)
+        report["cells"] = {"first_row": origin[0] + 1, "first_col": origin[1] + 1,
+                           "rows": export.cell_codes(out, report["beads"])}
     files = export.save_outputs(out, out_dir, name, a.width)
     h, w = out.shape[:2]
     report.update({"pixel_size": [w, h], "colours": int(len(np.unique(out[out[..., 3] > 0][:, :3], axis=0))),

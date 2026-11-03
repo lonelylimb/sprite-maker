@@ -629,6 +629,8 @@ def read_chart_codes(rgba, cells, codes, counts, beads, background=()):
     cc, sizes = components(~paper)
     main = cc == int(np.argmax(sizes)) + 1 if len(sizes) else ~paper
     holes = paper & ~outside_background(~main)
+    # ... and so are blank cells with a crisp printed code (e.g. white steam drawn apart from the art)
+    holes |= paper & (dark < 150)
     use = ~paper | holes
     X = fills[use]
     # fine clusters: chart apps can print two beads only a few RGB steps apart

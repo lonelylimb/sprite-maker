@@ -275,10 +275,15 @@ def main(argv=None):
         for colour, n in export.remove_fringe(out):
             report["notes"].append(f"removed {n} edge pixels of fringe colour {colour} (only used around the outside); "
                                    "use --keep-fringe to keep them")
-    bg = report.get("background")
-    cleared = export.remove_strays(out, np.array(bg) if bg else None, a.bg_tol * 1.5)
-    if cleared:
-        report["notes"].append(f"removed {cleared} stray edge pixels")
+    if mode != "chart":
+        # Chart cells are each read against the legend, so a bead that touches the art only
+        # at a corner (a sepal tip, a stray-looking highlight) is still part of it; separate
+        # parts are already handled by keep_largest above.
+        bg = report.get("background")
+        cleared = export.remove_strays(out, np.array(bg) if bg else None, a.bg_tol * 1.5)
+        if cleared:
+            where = ", ".join(f"x {x} y {y}" for x, y in cleared[:20]) + (" ..." if len(cleared) > 20 else "")
+            report["notes"].append(f"removed {len(cleared)} stray edge pixels (before trimming): {where}")
     ys, xs = np.where(out[..., 3] > 0)
     oy, ox = report.pop("_origin", (0, 0))
     origin = (oy + int(ys.min()), ox + int(xs.min()))  # chart cell (0-based) of the sprite's top-left pixel

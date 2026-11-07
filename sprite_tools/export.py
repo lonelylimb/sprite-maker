@@ -99,9 +99,9 @@ def remove_fringe(rgba, min_edge_share=0.8, min_pixels=3):
 def remove_strays(rgba, bg=None, tol=60):
     """Clear isolated opaque pixels and, if bg is given, background-coloured pixels on the outer edge.
 
-    Returns the number of pixels cleared.
+    Returns the (x, y) positions cleared, before trimming.
     """
-    cleared = 0
+    cleared = []
     while True:
         op = rgba[..., 3] > 0
         stray = op & (_neighbours(op) == 0)
@@ -111,7 +111,7 @@ def remove_strays(rgba, bg=None, tol=60):
         if not stray.any():
             return cleared
         rgba[stray] = 0
-        cleared += int(stray.sum())
+        cleared += [(int(x), int(y)) for y, x in zip(*np.where(stray))]
 
 
 def cell_codes(rgba, beads):

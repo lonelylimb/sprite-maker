@@ -15,7 +15,7 @@ For bead charts read with `--legend`, make hand fixes with `python -m sprite_too
 
 Send me the finished PNGs (both sizes and the preview) in this chat. Never commit or push anything under `sprites/`; the folder is git-ignored and stays local.
 
-If I send two images of the same art (e.g. a bead chart and a clean picture), use the chart for the pixel grid and the clean picture for the colours: `python -m sprite_tools CHART --colour-source PICTURE`. When there's only a chart, use the chart's cell colours. When there's only a picture, cluster its colours.
+If I send a bead chart and a picture of the same art, the chart is always the primary source, for both the grid and the colours: run the tool on the chart alone, with no `--colour-source`. Use the picture only where you're unsure, e.g. to settle a cell the chart doesn't make clear. Tell me where you did. When there's only a chart, use the chart's cell colours. When there's only a picture, cluster its colours.
 
 A bead chart's stated size (e.g. 70x62) includes its empty border. Report the trimmed size of the art itself.
 

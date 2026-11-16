@@ -141,7 +141,7 @@ def main(argv=None):
     path.write_text(json.dumps(report, indent=2, default=float))
 
     print(f"{name}: {w}x{h} pixels after {len(done)} fixes")
-    for k in ("sprite", "upscaled", "preview", "pixdot"):
+    for k in ("sprite", "upscaled", "preview", "pixdot", "pixdot_transparent"):
         print(f"  {files[k]}")
     for n in notes:
         print(f"  - {n}")

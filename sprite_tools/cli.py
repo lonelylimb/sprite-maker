@@ -304,7 +304,7 @@ def main(argv=None):
     Path(out_dir, "report.json").write_text(json.dumps(report, indent=2, default=float))
 
     print(f"{name}: {w}x{h} pixels, {report['colours']} colours, upscaled x{files['scale']} ({mode} mode)")
-    for k in ("sprite", "upscaled", "preview", "pixdot"):
+    for k in ("sprite", "upscaled", "preview", "pixdot", "pixdot_transparent"):
         print(f"  {files[k]}")
     for n in report["notes"]:
         print(f"  - {n}")

@@ -148,9 +148,9 @@ def save_outputs(rgba, out_dir, name, width=1000):
     pv.alpha_composite(big, (margin, margin))
     pv_path = out_dir / "preview_dark.png"
     pv.convert("RGB").save(pv_path)
-    pixdot_path, pixdot_scale, grey = save_pixdot(rgba, out_dir, name)
+    pixdot_path, pixdot_clear, pixdot_scale, grey = save_pixdot(rgba, out_dir, name)
     return {"sprite": str(small_path), "upscaled": str(big_path), "preview": str(pv_path), "scale": scale,
-            "pixdot": str(pixdot_path), "pixdot_scale": pixdot_scale, "pixdot_background": grey}
+            "pixdot": str(pixdot_path), "pixdot_transparent": str(pixdot_clear), "pixdot_scale": pixdot_scale, "pixdot_background": grey}
 
 
 def neutral_background(rgba):
@@ -163,7 +163,8 @@ def neutral_background(rgba):
 
 def save_pixdot(rgba, out_dir, name):
     """Square canvas with the art centred and at least PIXDOT_MARGIN pixels of background on every side, x16 (smaller if the file would be wider than PIXDOT_MAX_WIDTH),
-    on a neutral grey that is not in the art: <name>_pixdot_<N>px_x<s>.png."""
+    on a neutral grey that is not in the art: <name>_pixdot_<N>px_x<s>.png, and the same canvas with a
+    transparent background: <name>_pixdot_<N>px_x<s>_transparent.png."""
     h, w = rgba.shape[:2]
     n = max(w, h) + 2 * PIXDOT_MARGIN
     sq = np.zeros((n, n, 4), np.uint8)
@@ -176,4 +177,6 @@ def save_pixdot(rgba, out_dir, name):
     canvas.alpha_composite(big)
     path = Path(out_dir) / f"{name}_pixdot_{n * scale}px_x{scale}.png"
     canvas.convert("RGB").save(path)
-    return path, scale, grey
+    clear = Path(out_dir) / f"{name}_pixdot_{n * scale}px_x{scale}_transparent.png"
+    big.save(clear)
+    return path, clear, scale, grey

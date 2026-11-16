@@ -4,7 +4,7 @@ Keep only the main object. Remove the background, watermarks, signatures, text, 
 Work out the original pixel size, snap to that grid, and use one solid colour per pixel: no blur, no anti-aliasing, no new detail.
 Where a watermark or overlay crosses the art, use the colour underneath, not the overlay.
 Make the background transparent. Keep the art’s own outline and any shadow that’s drawn as part of it. Remove stray background pixels along the edges.
-Export two PNGs: one at 1 pixel per art pixel, and one scaled up with nearest-neighbour to about 1000px wide. Also export a Pixdot file for importing into the Pixdot app: the art centred on a square canvas, scaled up ×16 with nearest-neighbour, on a solid neutral grey that isn't in the art. If ×16 would make it wider than 1170px, use the largest scale that fits, because Pixdot shrinks wider files to the phone width and then can't find the grid.
+Export two PNGs: one at 1 pixel per art pixel, and one scaled up with nearest-neighbour to about 1000px wide. Also export a Pixdot file for importing into the Pixdot app: the art centred on a square canvas with at least 2 art pixels of plain background on every side, scaled up ×16 with nearest-neighbour, on a solid neutral grey that isn't in the art. If ×16 would make it wider than 1170px, use the largest scale that fits, because Pixdot shrinks wider files to the phone width and then can't find the grid.
 Show me a preview on a dark background and tell me the pixel size and anything you weren’t sure about.
 
 ## Tools

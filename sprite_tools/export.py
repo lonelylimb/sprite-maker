@@ -7,6 +7,7 @@ from PIL import Image
 
 PREVIEW_BG = (24, 24, 28, 255)
 PIXDOT_MAX_SCALE = 16
+PIXDOT_MARGIN = 2  # art pixels of plain background on every side
 PIXDOT_MAX_WIDTH = 1170  # Pixdot fits the image to the phone width (1179 px); wider files get shrunk and its grid guess fails
 
 
@@ -161,10 +162,10 @@ def neutral_background(rgba):
 
 
 def save_pixdot(rgba, out_dir, name):
-    """Square canvas with the art centred, x16 (smaller if the file would be wider than PIXDOT_MAX_WIDTH),
+    """Square canvas with the art centred and at least PIXDOT_MARGIN pixels of background on every side, x16 (smaller if the file would be wider than PIXDOT_MAX_WIDTH),
     on a neutral grey that is not in the art: <name>_pixdot_<N>px_x<s>.png."""
     h, w = rgba.shape[:2]
-    n = max(w, h)
+    n = max(w, h) + 2 * PIXDOT_MARGIN
     sq = np.zeros((n, n, 4), np.uint8)
     y0, x0 = (n - h) // 2, (n - w) // 2
     sq[y0:y0 + h, x0:x0 + w] = rgba

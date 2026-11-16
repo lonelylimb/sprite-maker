@@ -4,16 +4,16 @@ Keep only the main object. Remove the background, watermarks, signatures, text, 
 Work out the original pixel size, snap to that grid, and use one solid colour per pixel: no blur, no anti-aliasing, no new detail.
 Where a watermark or overlay crosses the art, use the colour underneath, not the overlay.
 Make the background transparent. Keep the art’s own outline and any shadow that’s drawn as part of it. Remove stray background pixels along the edges.
-Export two PNGs: one at 1 pixel per art pixel, and one scaled up with nearest-neighbour to about 1000px wide.
+Export two PNGs: one at 1 pixel per art pixel, and one scaled up with nearest-neighbour to about 1000px wide. Also export a Pixdot file for importing into the Pixdot app: the art centred on a square canvas, scaled up ×16 with nearest-neighbour, on a solid neutral grey that isn't in the art. If ×16 would make it wider than 1170px, use the largest scale that fits, because Pixdot shrinks wider files to the phone width and then can't find the grid.
 Show me a preview on a dark background and tell me the pixel size and anything you weren’t sure about.
 
 ## Tools
 
-Start with `python -m sprite_tools INPUT`, then check its preview and notes before showing me. It works out the grid, snaps colours, makes the background transparent and writes the two PNGs, `preview_dark.png` and `report.json` to `sprites/<name>/`. Use `--name` to set the name (lowercase with underscores, e.g. `guava_bowl`). Files are `<name>_<w>x<h>.png` and `<name>_<width>w.png`. Fix by hand anything the tool gets wrong, and tell me what you changed. Before showing me, compare the preview's outline edge by edge with the chart (or picture), and when a bead count is short of the legend, find where those beads are in the chart rather than putting it down to misreads: single beads that touch the art only at a corner (leaf and sepal tips) are easy to lose.
+Start with `python -m sprite_tools INPUT`, then check its preview and notes before showing me. It works out the grid, snaps colours, makes the background transparent and writes the two PNGs, `preview_dark.png` and `report.json` to `sprites/<name>/`. Use `--name` to set the name (lowercase with underscores, e.g. `guava_bowl`). Files are `<name>_<w>x<h>.png`, `<name>_<width>w.png` and `<name>_pixdot_<N>px_x<scale>.png`. Fix by hand anything the tool gets wrong, and tell me what you changed. Before showing me, compare the preview's outline edge by edge with the chart (or picture), and when a bead count is short of the legend, find where those beads are in the chart rather than putting it down to misreads: single beads that touch the art only at a corner (leaf and sepal tips) are easy to lose.
 
 For bead charts read with `--legend`, make hand fixes with `python -m sprite_tools.fix sprites/<name> EDIT ...`, using the chart's own row and column numbers: `r31c34=H19` sets a cell, `r43c19=-` clears it, and `E15<>F22` swaps two codes everywhere (for when a whole colour group was read as the other). It re-counts against the legend, re-trims, re-exports the PNGs and preview, and records the fixes in `report.json`. `report.json` lists every cell's code under `cells`.
 
-Send me the finished PNGs (both sizes and the preview) in this chat. Never commit or push anything under `sprites/`; the folder is git-ignored and stays local.
+Send me the finished PNGs (both sizes, the Pixdot file and the preview) in this chat. Never commit or push anything under `sprites/`; the folder is git-ignored and stays local.
 
 If I send a bead chart and a picture of the same art, the chart is always the primary source, for both the grid and the colours: run the tool on the chart alone, with no `--colour-source`. Use the picture only where you're unsure, e.g. to settle a cell the chart doesn't make clear. Tell me where you did. When there's only a chart, use the chart's cell colours. When there's only a picture, cluster its colours.
 

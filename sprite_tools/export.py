@@ -6,6 +6,8 @@ import numpy as np
 from PIL import Image
 
 PREVIEW_BG = (24, 24, 28, 255)
+PIXDOT_MAX_SCALE = 16
+PIXDOT_MAX_WIDTH = 1170  # Pixdot fits the image to the phone width (1179 px); wider files get shrunk and its grid guess fails
 
 
 def _neighbours(op):
@@ -145,4 +147,32 @@ def save_outputs(rgba, out_dir, name, width=1000):
     pv.alpha_composite(big, (margin, margin))
     pv_path = out_dir / "preview_dark.png"
     pv.convert("RGB").save(pv_path)
-    return {"sprite": str(small_path), "upscaled": str(big_path), "preview": str(pv_path), "scale": scale}
+    pixdot_path, pixdot_scale, grey = save_pixdot(rgba, out_dir, name)
+    return {"sprite": str(small_path), "upscaled": str(big_path), "preview": str(pv_path), "scale": scale,
+            "pixdot": str(pixdot_path), "pixdot_scale": pixdot_scale, "pixdot_background": grey}
+
+
+def neutral_background(rgba):
+    """The grey level (0-255) furthest from every colour in the art."""
+    cols = np.unique(rgba[rgba[..., 3] > 0][:, :3].astype(int), axis=0)
+    if not len(cols):
+        return 165
+    return max(range(40, 216), key=lambda v: np.abs(cols - v).sum(1).min())
+
+
+def save_pixdot(rgba, out_dir, name):
+    """Square canvas with the art centred, x16 (smaller if the file would be wider than PIXDOT_MAX_WIDTH),
+    on a neutral grey that is not in the art: <name>_pixdot_<N>px_x<s>.png."""
+    h, w = rgba.shape[:2]
+    n = max(w, h)
+    sq = np.zeros((n, n, 4), np.uint8)
+    y0, x0 = (n - h) // 2, (n - w) // 2
+    sq[y0:y0 + h, x0:x0 + w] = rgba
+    scale = max(1, min(PIXDOT_MAX_SCALE, PIXDOT_MAX_WIDTH // n))
+    grey = neutral_background(rgba)
+    big = Image.fromarray(sq, "RGBA").resize((n * scale, n * scale), Image.NEAREST)
+    canvas = Image.new("RGBA", big.size, (grey, grey, grey, 255))
+    canvas.alpha_composite(big)
+    path = Path(out_dir) / f"{name}_pixdot_{n * scale}px_x{scale}.png"
+    canvas.convert("RGB").save(path)
+    return path, scale, grey
